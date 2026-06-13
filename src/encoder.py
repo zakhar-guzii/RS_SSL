@@ -52,26 +52,27 @@ def plot_confusion_matrix(y_pred, y_true, path: str) -> None:
     
 
 class CNNFeatureEncoder(nn.Module):
-    def __init__(self, input_channels: int, output_dim: int = 64):
+    def __init__(self, input_channels: int, conv_out_channels: list, kernel_size: int, padding: int, pool_kernel: int, output_dim: int = 64):
         super(CNNFeatureEncoder, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv1d(in_channels=input_channels, out_channels=64, kernel_size=5, padding=2),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2),
+        layers = []
+        in_channels = input_channels
 
-            nn.Conv1d(in_channels=64, out_channels=128, kernel_size=5, padding=2),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2),
+        for out_channels in conv_out_channels:
+            layers.extend([
+                nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, padding=padding),
+                nn.BatchNorm1d(out_channels),
+                nn.ReLU(),
+                nn.MaxPool1d(kernel_size=pool_kernel),
+            ])
+            in_channels = out_channels
 
-            nn.Conv1d(in_channels=128, out_channels=128, kernel_size=5, padding=2),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
+        layers.extend([
             nn.AdaptiveAvgPool1d(1),
             nn.Flatten()
-        )
-        self.projection = nn.Linear(128, output_dim)
+        ])
+
+        self.conv = nn.Sequential(*layers)
+        self.projection = nn.Linear(in_channels, output_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.transpose(1, 2)
@@ -97,9 +98,9 @@ class LSTMFeatureEncoder(nn.Module):
     
 
 class ActivityClassifier(nn.Module):
-    def __init__(self, input_channels: int, feature_dim: int, hidden_dim: int, num_classes: int, num_layers: int = 1):
+    def __init__(self, input_channels: int, conv_out_channels: list, kernel_size: int, padding: int, pool_kernel: int, feature_dim: int, hidden_dim: int, num_classes: int, num_layers: int = 1):
         super(ActivityClassifier, self).__init__()
-        self.cnn = CNNFeatureEncoder(input_channels, feature_dim)
+        self.cnn = CNNFeatureEncoder(input_channels, conv_out_channels, kernel_size, padding, pool_kernel, feature_dim)
         self.lstm = LSTMFeatureEncoder(
             feature_dim=feature_dim,
             hidden_dim=hidden_dim,
@@ -211,11 +212,15 @@ def load_and_prepare_data(config):
 def build_model(config, device):
     """Create and move model to device."""
     model = ActivityClassifier(
-        config["model"]["cnn"]["input_channels"],
-        config["model"]["lstm"]["feature_dim"],
-        config["model"]["lstm"]["hidden_dim"],
-        config["model"]["classifier"]["num_classes"],
-        config["model"]["lstm"]["num_layers"]
+        input_channels=config["model"]["cnn"]["input_channels"],
+        conv_out_channels=config["model"]["cnn"]["conv_out_channels"],
+        kernel_size=config["model"]["cnn"]["kernel_size"],
+        padding=config["model"]["cnn"]["padding"],
+        pool_kernel=config["model"]["cnn"]["pool_kernel"],
+        feature_dim=config["model"]["lstm"]["feature_dim"],
+        hidden_dim=config["model"]["lstm"]["hidden_dim"],
+        num_classes=config["model"]["classifier"]["num_classes"],
+        num_layers=config["model"]["lstm"]["num_layers"]
     )
     model.to(device)
     return model
