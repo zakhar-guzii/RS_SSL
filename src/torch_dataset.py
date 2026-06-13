@@ -2,6 +2,7 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from typing import Optional
 
 
 class CustomDataset(Dataset):
@@ -11,21 +12,35 @@ class CustomDataset(Dataset):
         "total_acc_x", "total_acc_y", "total_acc_z"
     ]
 
-    def __init__(self, dataset_name: str, dir_name: str, features_idxs: list[int],
-                 window_size: int = 128, overlap: float = 0.5):
+    def __init__(self, dataset_name: str, dir_name: str, window_size: int = 128, overlap: float = 0.5, norm_mean: Optional[float] = None, norm_std: Optional[float] = None):
+        if not (0.0 <= overlap < 1.0):
+             raise ValueError(f"overlap must be in [0, 1), got {overlap}")
+        
         self.dataset_name = dataset_name
         self.dir_name = dir_name
         self.window_size = window_size
         self.stride = int(window_size * (1 - overlap))
+        
+        if self.stride < 1:
+             raise ValueError(f"Invalid stride {self.stride}; choose a smaller overlap or a larger window_size")
 
-        script_dir = os.getcwd()
-        data_root = os.path.join(script_dir, "data")
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+        data_root = os.path.join(repo_root, "data")
         self.data_dir = os.path.join(data_root, dataset_name, dir_name)
         self.inertial_signals_dir = os.path.join(self.data_dir, "Inertial Signals")
 
         self.signals = self._load_signals()
         self.labels = self._load_labels()
         self.windows = self._create_windows()
+        
+        if norm_mean is not None and norm_std is not None:
+            self.signals = (self.signals - norm_mean) / (norm_std + 1e-8)
+        else:
+            norm_mean = self.signals.mean()
+            norm_std = self.signals.std()
+            self.norm_mean = norm_mean
+            self.norm_std = norm_std
+            self.signals = (self.signals - norm_mean) / (norm_std + 1e-8)
 
         print(f"✓ Loaded {len(self)} windowed samples from {dir_name} set")
 

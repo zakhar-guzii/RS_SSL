@@ -1,7 +1,6 @@
 import yaml
 from pathlib import Path
 from typing import Dict, Any
-from dataclasses import dataclass, field
 
 
 class ConfigLoader:

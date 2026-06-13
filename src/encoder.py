@@ -187,8 +187,12 @@ def load_and_prepare_data(config):
     window_size = config["model"]["dataset"]["window_size"]
     overlap = config["model"]["dataset"]["overlap"]
 
-    train_dataset = CustomDataset("uci_har", "train", [], window_size=window_size, overlap=overlap)
-    test_dataset = CustomDataset("uci_har", "test", [], window_size=window_size, overlap=overlap)
+    train_dataset = CustomDataset("uci_har", "train", window_size=window_size, overlap=overlap)
+    
+    norm_mean = train_dataset.norm_mean
+    norm_std = train_dataset.norm_std
+    
+    test_dataset = CustomDataset("uci_har", "test", window_size=window_size, overlap=overlap, norm_mean=norm_mean, norm_std=norm_std)
     
     train_indices, val_indices = train_test_split(
         range(len(train_dataset)),
@@ -223,7 +227,7 @@ def train_model(model, train_loader, val_loader, config, device, mlflow):
     optimizer = optim.Adam(
         model.parameters(), 
         lr=config["training"]["learning_rate"],
-        weight_decay=1e-4
+        weight_decay=float(config["training"]["weight_decay"])
     )
     scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=config["training"]["num_epochs"])
     
@@ -239,7 +243,7 @@ def train_model(model, train_loader, val_loader, config, device, mlflow):
         val_acc = balanced_accuracy_score(val_labels, val_preds)
         mlflow.log_metric("val_accuracy", val_acc, step=epoch)
         
-        print(f"✓ Val Accuracy: {val_acc:.4f}\n")
+        print(f"✓ Val Balanced Accuracy: {val_acc:.4f}\n")
         
         if val_acc > best_val_acc:
             best_val_acc = val_acc
@@ -282,7 +286,7 @@ def evaluate_and_log(model, test_loader, device, mlflow):
     mlflow.log_artifact("/tmp/classification_report.txt")
     
     cm_path = "/tmp/confusion_matrix.png"
-    plot_confusion_matrix(labels, preds, cm_path)
+    plot_confusion_matrix(preds, labels, cm_path)
     mlflow.log_artifact(cm_path)
     
     return preds, labels
@@ -366,7 +370,7 @@ def run_cnn_lstm_classifier():
             "cnn_input_channels": config["model"]["cnn"]["input_channels"],
             "cnn_conv_channels": str(config["model"]["cnn"]["conv_out_channels"]),
             "cnn_kernel_size": config["model"]["cnn"]["kernel_size"],
-            "cnn_output_dim": config["model"]["cnn"]["output_dim"],
+            "cnn_output_dim": config["model"]["lstm"]["feature_dim"],
             "lstm_feature_dim": config["model"]["lstm"]["feature_dim"],
             "lstm_hidden_dim": config["model"]["lstm"]["hidden_dim"],
             "lstm_num_layers": config["model"]["lstm"]["num_layers"],

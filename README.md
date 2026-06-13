@@ -25,7 +25,6 @@ uv run src/baseline.py         # Train Random Forest baseline
 | `src/baseline.py` | Random Forest baseline model |
 | `src/torch_dataset.py` | Windowed dataset loader (128-sample windows with 50% overlap) |
 | `src/dataset.py` | Utility functions for loading UCI HAR dataset |
-| `src/config.py` | Configuration dataclasses |
 | `src/config_loader.py` | YAML configuration loader with hierarchical merging |
 
 ### Configuration Hierarchy
