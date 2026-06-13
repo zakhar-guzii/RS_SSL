@@ -1,0 +1,30 @@
+# models/baseline_rf.yaml - Random Forest baseline configuration
+# Inherits from shared.yaml, overrides where needed
+
+model:
+  name: "baseline_rf"
+
+  # Random Forest parameters
+  random_forest:
+    n_estimators: 200
+    max_depth: null  # unlimited
+    min_samples_leaf: 1
+    n_jobs: -1  # Use all CPUs
+
+  # PCA feature reduction
+  pca:
+    variance_threshold: 0.99  # Keep 99% of variance
+    random_state: 42
+
+# Training uses defaults from shared.yaml
+training:
+  seed: 42
+
+# MLflow configuration for baseline
+mlflow:
+  experiment_name: "UCI_HAR_RF_Baseline"
+  run_name: "rf_pca_baseline"
+  tags:
+    model_type: "random_forest"
+    approach: "supervised"
+    feature_type: "hand_crafted_pca"
