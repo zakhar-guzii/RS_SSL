@@ -1,0 +1,46 @@
+# models/baseline_cnn.yaml - Simple CNN baseline for merged HAR dataset
+# Inherits from shared.yaml, overrides where needed
+
+model:
+  name: "baseline_cnn"
+
+  cnn:
+    input_channels: 3
+    conv_out_channels: [64, 128, 128]
+    kernel_size: 5
+    padding: 2
+    pool_kernel: 2
+
+  classifier:
+    num_classes: 5
+    hidden_dim: 64
+
+  dropout: 0.4
+  batch_norm: true
+
+training:
+  batch_size: 64
+  num_epochs: 50
+  learning_rate: 0.001
+  weight_decay: 1e-5
+  patience: 10
+
+optimizer:
+  type: "adam"
+  beta1: 0.9
+  beta2: 0.999
+  eps: 1e-8
+
+lr_schedule:
+  type: "cosine"
+  min_lr: 1e-5
+
+mlflow:
+  experiment_name: "HAR_Merged_Baseline_CNN"
+  run_name: "baseline_cnn_v1"
+  tags:
+    model_type: "cnn"
+    approach: "supervised"
+    feature_type: "learned_from_raw_signals"
+    data_format: "windowed"
+    dataset: "har_merged"

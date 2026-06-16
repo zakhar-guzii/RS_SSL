@@ -1,0 +1,37 @@
+# datasets/har_merged.yaml - Merged HAR Dataset (UCI HAR + WISDM + MotionSense + HHAR)
+
+dataset:
+  name: "har_merged"
+  version: "1.0"
+  description: "Merged accelerometer data from 4 HAR datasets, 5 activities, 99 subjects"
+
+  paths:
+    root: "./data/merged/har_merged.npz"
+
+  specs:
+    num_samples: 61891
+    num_classes: 5
+    channels: 3             # 3-axis accelerometer only
+    sources: ["uci", "wisdm", "motionsense", "hhar"]
+
+  activity_labels:
+    0: "downstairs"
+    1: "sit"
+    2: "stand"
+    3: "upstairs"
+    4: "walk"
+
+  preprocessing:
+    normalize: true
+    normalization_type: "zscore"
+
+  split:
+    train_ratio: 0.70
+    val_ratio: 0.15
+    test_ratio: 0.15
+    stratified: true
+    random_seed: 42
+
+  input_format:
+    sequence_length: 128
+    channels: 3
