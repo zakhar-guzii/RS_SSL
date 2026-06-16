@@ -1,0 +1,41 @@
+# datasets/template.yaml - Template for adding new datasets
+# Copy this and fill in for new datasets
+
+dataset:
+  name: "your_dataset_name"
+  version: "1.0"
+  description: "Dataset description"
+
+  paths:
+    root: "./data/your_dataset"
+    train_data: "train.csv"    # Adjust based on format
+    test_data: "test.csv"
+    train_labels: "train_labels.txt"
+    test_labels: "test_labels.txt"
+
+  specs:
+    num_samples_train: 0        # Fill in
+    num_samples_test: 0
+    num_features: 0
+    num_classes: 0
+    feature_groups: {}          # Define sensor/feature groups if applicable
+
+  activity_labels: {}           # Map class indices to names
+
+  preprocessing:
+    normalize: true
+    normalization_type: "zscore"
+    handle_missing: "drop"
+    remove_duplicates: false
+
+  split:
+    train_ratio: 0.7
+    val_ratio: 0.3
+    stratified: true
+    random_seed: 42
+
+  input_format:
+    sequence_length: 128
+    stride: 64
+    channels: 9
+    selected_indices: []        # Specify if using subset of features

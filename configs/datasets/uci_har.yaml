@@ -1,0 +1,60 @@
+# datasets/uci_har.yaml - UCI Human Activity Recognition Dataset
+
+dataset:
+  name: "uci_har"
+  version: "1.0"
+  description: "UCI HAR Activity Recognition from Smartphone Sensors"
+
+  # Dataset location
+  paths:
+    root: "./data/uci_har"
+    train_data: "train/X_train.txt"
+    test_data: "test/X_test.txt"
+    train_labels: "train/y_train.txt"
+    test_labels: "test/y_test.txt"
+    features: "features.txt"
+
+  # Data specifications
+  specs:
+    num_samples_train: 7352
+    num_samples_test: 2947
+    num_features: 561           # Total engineered features
+    num_classes: 6              # Activity types
+    feature_groups:             # Group features by sensor
+      accelerometer: 
+        indices: [0, 1, 2]      # 3-axis accel
+      gyroscope:
+        indices: [3, 4, 5]      # 3-axis gyro
+      derived:
+        indices: [6, 7, 8]      # Magnitude and derived features
+
+  # Activity labels (in order)
+  activity_labels:
+    1: "WALKING"
+    2: "WALKING_UPSTAIRS"
+    3: "WALKING_DOWNSTAIRS"
+    4: "SITTING"
+    5: "STANDING"
+    6: "LAYING"
+
+  # Preprocessing
+  preprocessing:
+    normalize: true             # Z-score normalization
+    normalization_type: "zscore" # "zscore" or "minmax"
+    handle_missing: "drop"
+    remove_duplicates: false
+
+  # Train/Val/Test split
+  split:
+    train_ratio: 0.7            # Of training data, use for train
+    val_ratio: 0.3              # Of training data, use for validation
+    test_ratio: 1.0             # Use all test data
+    stratified: true            # Stratified split by class
+    random_seed: 42
+
+  # Data format for model input
+  input_format:
+    sequence_length: 128        # Samples per sequence (for temporal models)
+    stride: 64                  # Sliding window stride
+    channels: 9                 # Use 9 features (accel + gyro + derived)
+    selected_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8]  # Which features to use

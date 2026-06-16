@@ -1,0 +1,37 @@
+# shared.yaml - Common defaults for all experiments
+# Override these in model or dataset specific configs
+
+# Paths
+paths:
+  data_root: "./data"
+  mlflow_tracking_uri: "sqlite:///mlflow.db"
+  output_dir: "./outputs"
+  checkpoint_dir: "./checkpoints"
+
+# Training defaults
+training:
+  batch_size: 32
+  num_epochs: 100
+  learning_rate: 0.001
+  weight_decay: 1e-5
+  patience: 10
+  device: "cuda"
+  num_workers: 4
+  seed: 42
+
+# Model defaults
+model:
+  dropout: 0.3
+  activation: "relu"
+
+# MLflow defaults
+mlflow:
+  tracking_uri: "sqlite:///mlflow.db"
+  tags:
+    project: "UCI_HAR_Classification"
+    framework: "PyTorch"
+
+# Logging
+logging:
+  log_interval: 10  # Log metrics every N batches
+  save_checkpoints: true

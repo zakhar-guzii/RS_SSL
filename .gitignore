@@ -221,3 +221,7 @@ __marimo__/
 
 uci_har/
 data/
+
+# MLflow tracking
+mlruns/
+mlflow.db

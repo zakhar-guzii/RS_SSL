@@ -1,0 +1,67 @@
+# models/cnn_lstm.yaml - CNN-LSTM model configuration
+# Inherits from shared.yaml, overrides where needed
+
+model:
+  name: "cnn_lstm"
+
+  # Dataset
+  dataset:
+    window_size: 128
+    overlap: 0.5
+
+  # CNN Feature Extractor
+  cnn:
+    input_channels: 9
+    conv_out_channels: [64, 128, 128]
+    kernel_size: 5
+    padding: 2
+    pool_kernel: 2
+    output_dim: 64
+
+  # LSTM Temporal Encoder
+  lstm:
+    feature_dim: 64
+    hidden_dim: 128
+    num_layers: 2
+    bidirectional: false
+
+  # Classification Head
+  classifier:
+    num_classes: 6
+    hidden_dim: 64
+
+  # Regularization
+  dropout: 0.4
+  batch_norm: true
+
+# Override training for this model
+training:
+  batch_size: 32
+  num_epochs: 30
+  learning_rate: 0.001
+  weight_decay: 1e-5
+  patience: 15
+  warmup_epochs: 5  # Learning rate warmup
+
+# Optimization specifics for LSTM models
+optimizer:
+  type: "adam"
+  beta1: 0.9
+  beta2: 0.999
+  eps: 1e-8
+
+# Learning rate schedule
+lr_schedule:
+  type: "cosine"
+  warmup_epochs: 5
+  min_lr: 1e-5
+
+# MLflow tracking
+mlflow:
+  experiment_name: "UCI_HAR_CNN_LSTM"
+  run_name: "cnn_lstm_windowed_v1"
+  tags:
+    model_type: "cnn_lstm"
+    approach: "supervised"
+    feature_type: "learned_from_raw_signals"
+    data_format: "windowed"
