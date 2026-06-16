@@ -65,7 +65,8 @@ class TransformerClassifier(nn.Module):
             nn.Linear(d_model // 2, num_classes),
         )
 
-        nn.init.trunc_normal_(self.cls_token, std=0.02)
+        nn.init.trunc_normal_(self.cls_token, std
+                              =0.02)
         nn.init.trunc_normal_(self.pos_embedding, std=0.02)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -133,7 +134,7 @@ def log_model_to_mlflow(model, test_dataloader, device, mlflow):
         input_example=input_example,
     )
 
-    print("✓ Model logged to MLflow\n")
+    print("Model logged to MLflow\n")
 
 
 def run_transformer_classifier():
