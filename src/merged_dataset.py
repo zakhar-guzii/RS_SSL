@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.model_selection import StratifiedGroupKFold
 from typing import Tuple
 
 
@@ -28,21 +28,26 @@ def load_and_prepare_data(config) -> Tuple[DataLoader, DataLoader, DataLoader, "
     data = np.load(npz_path)
     X = data["X"].astype(np.float32)
     y = data["y"].astype(np.int64)
+    subjects = data["subject"]
 
     seed = config["training"].get("seed", 42)
     test_ratio = config["dataset"]["split"]["test_ratio"]
     val_ratio = config["dataset"]["split"]["val_ratio"]
 
-    # Stratified hold-out: carve out test set
-    sss_test = StratifiedShuffleSplit(n_splits=1, test_size=test_ratio, random_state=seed)
-    trainval_idx, test_idx = next(sss_test.split(X, y))
+    # Subject-grouped, class-stratified hold-out: carve out test set
+    # n_splits ≈ 1/test_ratio so each fold is roughly test_ratio of the data
+    n_test_splits = round(1.0 / test_ratio)
+    sgkf_test = StratifiedGroupKFold(n_splits=n_test_splits, shuffle=True, random_state=seed)
+    trainval_idx, test_idx = next(sgkf_test.split(X, y, groups=subjects))
     X_trainval, y_trainval = X[trainval_idx], y[trainval_idx]
+    sub_trainval = subjects[trainval_idx]
     X_test, y_test = X[test_idx], y[test_idx]
 
-    # Stratified hold-out: carve out val set from trainval
+    # Subject-grouped, class-stratified hold-out: carve out val set from trainval
     val_share = val_ratio / (1.0 - test_ratio)
-    sss_val = StratifiedShuffleSplit(n_splits=1, test_size=val_share, random_state=seed)
-    train_idx, val_idx = next(sss_val.split(X_trainval, y_trainval))
+    n_val_splits = round(1.0 / val_share)
+    sgkf_val = StratifiedGroupKFold(n_splits=n_val_splits, shuffle=True, random_state=seed)
+    train_idx, val_idx = next(sgkf_val.split(X_trainval, y_trainval, groups=sub_trainval))
     X_train, y_train = X_trainval[train_idx], y_trainval[train_idx]
     X_val, y_val = X_trainval[val_idx], y_trainval[val_idx]
 

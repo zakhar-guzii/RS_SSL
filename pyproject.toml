@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "kaggle>=2.2.2",
     "matplotlib>=3.10.9",
     "mlflow>=2.22.0",
     "numpy>=2.4.6",
