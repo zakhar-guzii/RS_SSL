@@ -1,0 +1,359 @@
+╭─── Claude Code v2.1.186 ─────────────────────────────────────────────────────╮
+│                                                    │ Tips for getting        │
+│               Welcome back Vladyslav!              │ started                 │
+│                                                    │ Run /init to create a … │
+│                       ▐▛███▜▌                      │ ─────────────────────── │
+│                      ▝▜█████▛▘                     │ What's new              │
+│                        ▘▘ ▝▝                       │ Added `claude mcp logi… │
+│       Sonnet 4.6 · Claude Pro ·                    │ Added status filtering… │
+│       kondratiuk011@gmail.com's Organization       │ Added a "Skills" secti… │
+│            ~/swe/university/kse/RS_SSL             │ /release-notes for more │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+❯ Replace the random StratifiedShuffleSplit in                                  
+    src/merged_dataset.py::load_and_prepare_data with a SUBJECT-GROUPED,        
+    class-stratified split (StratifiedGroupKFold / GroupShuffleSplit on the     
+    subject array, which the loader must read from the npz). This keeps every   
+    subject — and therefore all its overlapping windows — entirely within one   
+  split,                                                                        
+    eliminating both the near-duplicate and subject-identity leakage. (edited)  
+  i want to group by person, also these changes are needed to prevent data      
+  leakage. This is only about the merged dataset, i need you to rework the      
+  notebook (in notebooks) that is responsible for creating the dataset, and     
+  also other logic that is related to that                                      
+
+⏺ Let me explore the project structure first.
+
+  Searched for 1 pattern, read 2 files, listed 2 directories (ctrl+o to expand)
+
+⏺ Now let me check the config and any other related files.
+
+  Read 2 files, listed 1 directory, ran 1 shell command (ctrl+o to expand)
+
+⏺ Now I have a clear picture of all the changes needed. Let me check if
+  NotebookEdit is available.
+
+⏺ Two changes needed:
+  1. merged_dataset.py — swap StratifiedShuffleSplit for GroupShuffleSplit, load
+  subjects, pass as groups
+  2. har_merge.ipynb cell a0000014 — strip per-dataset z-score normalization
+  before save (it was double-normalizing and leaking split info into the stored
+  arrays)
+
+⏺ Update(src/merged_dataset.py)
+  ⎿  Added 1 line, removed 1 line
+      1  import numpy as np
+      2  import torch
+      3  from torch.utils.data import Dataset, DataLoader
+      4 -from sklearn.model_selection import StratifiedShuffleSplit      
+      4 +from sklearn.model_selection import GroupShuffleSplit           
+      5  from typing import Tuple
+      6  
+      7  
+
+❯ but why not statified group split?                                            
+
+⏺ You're right — StratifiedGroupKFold is strictly better here because it also
+  preserves class distribution across splits, not just subject grouping.
+  GroupShuffleSplit randomly assigns subjects without any class balance
+  guarantee, so a split could end up with very few "downstairs" samples in test
+  just by chance. StratifiedGroupKFold tries to balance both simultaneously.
+
+  The only trade-off is that it's fold-based so test_size ≈ 1/n_splits rather
+  than an exact ratio — but we can round n_splits = round(1/test_ratio) to get
+  close. Let me fix it.
+
+⏺ Update(src/merged_dataset.py)
+  ⎿  Added 1 line, removed 1 line
+      1  import numpy as np
+      2  import torch
+      3  from torch.utils.data import Dataset, DataLoader
+      4 -from sklearn.model_selection import GroupShuffleSplit           
+      4 +from sklearn.model_selection import StratifiedGroupKFold        
+      5  from typing import Tuple
+      6  
+      7  
+
+⏺ Now update load_and_prepare_data to use it:
+
+⏺ Update(src/merged_dataset.py)
+  ⎿  Added 10 lines, removed 6 lines
+      33      test_ratio = config["dataset"]["split"]["test_ratio"]
+      34      val_ratio = config["dataset"]["split"]["val_ratio"]
+      35  
+      36 -    # Stratified hold-out: carve out test set                  
+      37 -    sss_test = StratifiedShuffleSplit(n_splits=1, test_size=tes
+         -t_ratio, random_state=seed)                                    
+      38 -    trainval_idx, test_idx = next(sss_test.split(X, y))        
+      36 +    # Subject-grouped, class-stratified hold-out: carve out tes
+         +t set                                                          
+      37 +    # n_splits ≈ 1/test_ratio so each fold is roughly test_rati
+         +o of the data                                                  
+      38 +    n_test_splits = round(1.0 / test_ratio)                    
+      39 +    sgkf_test = StratifiedGroupKFold(n_splits=n_test_splits, sh
+         +uffle=True, random_state=seed)                                 
+      40 +    trainval_idx, test_idx = next(sgkf_test.split(X, y, groups=
+         +subjects))                                                     
+      41      X_trainval, y_trainval = X[trainval_idx], y[trainval_idx]
+      42 +    sub_trainval = subjects[trainval_idx]                      
+      43      X_test, y_test = X[test_idx], y[test_idx]
+      44  
+      42 -    # Stratified hold-out: carve out val set from trainval     
+      45 +    # Subject-grouped, class-stratified hold-out: carve out val
+         + set from trainval                                             
+      46      val_share = val_ratio / (1.0 - test_ratio)
+      44 -    sss_val = StratifiedShuffleSplit(n_splits=1, test_size=val_
+         -share, random_state=seed)                                      
+      45 -    train_idx, val_idx = next(sss_val.split(X_trainval, y_train
+         -val))                                                          
+      47 +    n_val_splits = round(1.0 / val_share)                      
+      48 +    sgkf_val = StratifiedGroupKFold(n_splits=n_val_splits, shuf
+         +fle=True, random_state=seed)                                   
+      49 +    train_idx, val_idx = next(sgkf_val.split(X_trainval, y_trai
+         +nval, groups=sub_trainval))                                    
+      50      X_train, y_train = X_trainval[train_idx], y_trainval[train_
+          idx]
+      51      X_val, y_val = X_trainval[val_idx], y_trainval[val_idx]
+      52  
+
+⏺ Now add the subjects load and fix the remaining function body:
+
+⏺ Update(src/merged_dataset.py)
+  ⎿  Added 1 line
+      28      data = np.load(npz_path)
+      29      X = data["X"].astype(np.float32)
+      30      y = data["y"].astype(np.int64)
+      31 +    subjects = data["subject"]                                 
+      32  
+      33      seed = config["training"].get("seed", 42)
+      34      test_ratio = config["dataset"]["split"]["test_ratio"]
+
+⏺ Now fix the notebook — strip the per-dataset normalization from the save cell
+  (normalization must happen after the split on train data only):
+  ⎿  Updated cell a0000014:
+         1 # Prefix subject IDs with source so cross-dataset collisions a
+           re impossible
+         2 src_tags = {
+         3     "uci":         (X_uci,   act_uci,   sub_uci),
+         4     "wisdm":       (X_wisdm, act_wisdm, sub_wisdm),
+         5     "motionsense": (X_ms,    act_ms,    sub_ms),
+         6     "hhar":        (X_hhar,  act_hhar,  sub_hhar),
+         7 }
+         8 
+         9 X_parts, act_parts, sub_parts, src_parts = [], [], [], []
+        10 for tag, (Xs, acts, subs) in src_tags.items():
+        11     # Raw signal values — normalization is deferred to trainin
+           g time so it can
+        12     # be computed on the train split only (prevents leakage vi
+           a global stats).
+        13     X_parts.append(Xs)
+        14     act_parts.append(acts)
+        15     sub_parts.append(np.array([f"{tag}_{s}" for s in subs]))
+        16     src_parts.append(np.full(len(Xs), tag))
+        17 
+        18 X        = np.concatenate(X_parts,   axis=0)
+        19 activity = np.concatenate(act_parts)
+        20 subject  = np.concatenate(sub_parts)
+        21 source   = np.concatenate(src_parts)
+        22 y        = np.array([LABEL_ENC[a] for a in activity], dtype=np
+           .int32)
+        23 
+        24 print(f"Total windows : {X.shape}")
+        25 print(f"Label encoding: {LABEL_ENC}")
+        26 print()
+        27 
+        28 meta = pd.DataFrame({"activity": activity, "source": source})
+        29 print(meta.groupby(["source", "activity"]).size().unstack(fill
+           _value=0))
+        30 
+        31 out_path = OUT_DIR / "har_merged.npz"
+        32 np.savez_compressed(str(out_path), X=X, y=y, activity=activity
+           , subject=subject, source=source)
+        33 print(f"\nSaved → {out_path}")
+
+⏺ Let me verify the final state of merged_dataset.py:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Looks good. Summary of all changes:
+
+  src/merged_dataset.py
+  - Swapped StratifiedShuffleSplit → StratifiedGroupKFold (groups by subject AND
+  keeps class balance)
+  - Loads subjects from the npz, tracks sub_trainval so the val split also
+  respects group boundaries
+  - n_splits = round(1/ratio) maps the config ratios to the nearest fold count
+  (0.15 → 7 folds ≈ 14.3% each)
+
+  notebooks/har_merge.ipynb cell 14
+  - Removed the per-dataset z-score normalization before saving — that was
+  double-normalizing (notebook then MergedHARDataset.__init__) and technically
+  leaking global stats across what would become train/val/test. Now the npz
+  stores raw signals, and normalization is computed on the train split only
+  inside MergedHARDataset.
+
+  ▎ One action needed: re-run the notebook to regenerate har_merged.npz with 
+  ▎ un-normalized raw values before training, since the stored file was 
+  ▎ normalized with the old approach.
+
+✻ Worked for 2m 55s
+
+※ recap: Replacing the random window-level split with a subject-grouped stratified split to prevent data leakage. Next action: re-run har_merge.ipynb to regenerate the npz with raw unnormalized signals. (disable recaps in /config)
+
+❯ ---------------------------------------------------------------------------   
+  FileNotFoundError                         Traceback (most recent call last)   
+  Cell In[7], line 15                                                           
+       11         with zipfile.ZipFile(wrapped) as zf:                          
+       12             zf.extractall(hhar_dir)                                   
+       13     else:                                                             
+       14         print("Downloading Phones_accelerometer.csv via Kaggle        
+  CLI...")                                                                      
+  ---> 15         subprocess.run([                                              
+       16             ".venv/bin/kaggle", "datasets", "download",               
+       17             "-d",                                                     
+  "chumajin/heterogeneity-human-activity-recognition-dataset",                  
+       18             "-f", "Phones_accelerometer.csv",                         
+                                                                                
+  File /opt/homebrew/Cellar/python@3.13/3.13.4/Frameworks/Python.framework/Vers 
+  ions/3.13/lib/python3.13/subprocess.py:554, in run(input, capture_output,     
+  timeout, check, *popenargs, **kwargs)                                         
+      551     kwargs['stdout'] = PIPE                                           
+      552     kwargs['stderr'] = PIPE                                           
+  --> 554 with Popen(*popenargs, **kwargs) as process:                          
+      555     try:                                                              
+      556         stdout, stderr = process.communicate(input, timeout=timeout)  
+                                                                                
+  File /opt/homebrew/Cellar/python@3.13/3.13.4/Frameworks/Python.framework/Vers 
+  ions/3.13/lib/python3.13/subprocess.py:1039, in Popen.__init__(self, args,    
+  bufsize, executable, stdin, stdout, stderr, preexec_fn, close_fds, shell,     
+  cwd, env, universal_newlines, startupinfo, creationflags, restore_signals,    
+  start_new_session, pass_fds, user, group, extra_groups, encoding, errors,     
+  text, umask, pipesize, process_group)                                         
+     1035         if self.text_mode:                                            
+     1036             self.stderr = io.TextIOWrapper(self.stderr,               
+     1037                     encoding=encoding, errors=errors)                 
+  -> 1039     self._execute_child(args, executable, preexec_fn, close_fds,      
+     1040                         pass_fds, cwd, env,                           
+  ...                                                                           
+  -> 1972     raise child_exception_type(errno_num, err_msg, err_filename)      
+     1973 else:                                                                 
+     1974     raise child_exception_type(errno_num, err_msg)                    
+                                                                                
+  FileNotFoundError: [Errno 2] No such file or directory: '.venv/bin/kaggle'    
+  Output is truncated. View as a scrollable element or open in a text editor.   
+  Adjust cell output settings...                                                
+
+⏺ Let me find the notebook cell causing this and check what's installed.
+
+  Searched for 1 pattern, listed 2 directories, ran 1 shell command (ctrl+o to expand)
+⏺ The error is from a different notebook — har_merge.ipynb has no download
+  cells. Let me find which notebook has this cell.
+
+  Searched for 1 pattern, read 1 file, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Kaggle is installed fine. The problem is the relative path .venv/bin/kaggle —
+  it breaks when the notebook kernel's working directory is notebooks/ rather
+  than the project root. The fix is to derive the kaggle binary from
+  sys.executable so it's always absolute.
+  ⎿  Updated cell e1f2a3b5:
+         1 import subprocess, sys
+         2 
+         3 hhar_dir = DATA_DIR / "HHAR"
+         4 hhar_dir.mkdir(exist_ok=True)
+         5 phones_acc = hhar_dir / "Phones_accelerometer.csv"
+         6 
+         7 if not phones_acc.exists():
+         8     wrapped = hhar_dir / "Phones_accelerometer.csv.zip"
+         9     if wrapped.exists():
+        10         print("Extracting existing zip...")
+        11         with zipfile.ZipFile(wrapped) as zf:
+        12             zf.extractall(hhar_dir)
+        13     else:
+        14         print("Downloading Phones_accelerometer.csv via Kaggle
+            CLI...")
+        15         kaggle_bin = str(Path(sys.executable).parent / "kaggle
+           ")
+        16         subprocess.run([
+        17             kaggle_bin, "datasets", "download",
+        18             "-d", "chumajin/heterogeneity-human-activity-recog
+           nition-dataset",
+        19             "-f", "Phones_accelerometer.csv",
+        20             "-p", str(hhar_dir),
+        21         ], check=True)
+        22         with zipfile.ZipFile(hhar_dir / "Phones_accelerometer.
+           csv.zip") as zf:
+        23             zf.extractall(hhar_dir)
+        24 
+        25 print("Using:", phones_acc)
+
+⏺ Path(sys.executable).parent / "kaggle" gives the absolute path to kaggle
+  inside whatever virtualenv the kernel is using, so it works regardless of
+  which directory Jupyter was launched from.
+
+✻ Cooked for 1m 23s
+
+※ recap: Subject-grouped split to prevent data leakage in the merged HAR dataset. Next: re-run the har_merge.ipynb notebook to regenerate har_merged.npz with raw (un-normalized) signals. (disable recaps in /config)
+
+❯ now how do i run it                                                           
+
+⏺ From the project root:
+
+  uv run jupyter notebook notebooks/har_merge.ipynb
+
+  Or if you want to run it non-interactively (no browser, just execute and save
+  outputs):
+
+  uv run jupyter nbconvert --to notebook --execute --inplace
+  notebooks/har_merge.ipynb
+
+  The second form is useful if you just want to regenerate har_merged.npz
+  without opening a browser. After it finishes, re-run your training — the npz
+  will have raw (un-normalized) values and the subject array that the new split
+  logic reads.
+
+✻ Crunched for 7s
+
+❯ no, i mean model training                                                     
+
+  Read 2 files, ran 1 shell command (ctrl+o to expand)
+
+⏺ Run it from the project root (configs and data paths are relative to there):
+
+  cd /Users/vladkondratiuk/swe/university/kse/RS_SSL
+  uv run python -m src.baseline_cnn
+
+  Or equivalently with PYTHONPATH:
+
+  PYTHONPATH=src uv run python src/baseline_cnn.py
+
+  The first form is safer since it sets up the module path automatically.
+  Results get logged to MLflow — you can view them with:
+
+  uv run mlflow ui
+
+✻ Cooked for 20s
+
+※ recap: Replacing window-level random splits with subject-grouped stratified splits to prevent data leakage in the merged HAR dataset. Re-run the merge notebook to regenerate har_merged.npz with raw (un-normalized) values before training. (disable recaps in /config)
+
+❯ in the merged dataset, how does "subject" look like and what does it          
+  represent                                                                     
+
+⏺ From the notebook's merge cell, each entry is a string
+  "{source}_{original_id}". For example:
+
+  - "uci_1", "uci_2", ... "uci_30" — 30 subjects
+  - "wisdm_1", "wisdm_2", ... "wisdm_36" — 36 subjects
+  - "motionsense_1", ... "motionsense_24" — 24 subjects
+  - "hhar_a", "hhar_b", ... "hhar_i" — 9 subjects (HHAR uses letter IDs)
+
+  So subject is a 1-D string array of length n_windows (61 891 entries), where
+  each value identifies which person produced that window. The source prefix is
+  there to avoid collisions — subject "1" appears in all four datasets but
+  they're different people, so "uci_1" vs "wisdm_1" keeps them distinct.
+
+  This is exactly what gets passed as groups=subjects to StratifiedGroupKFold:
+  it sees 99 unique group labels and ensures every window belonging to a given
+  person lands entirely in one split.
+
+✻ Crunched for 14s
