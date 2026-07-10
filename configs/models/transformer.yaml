@@ -1,0 +1,56 @@
+# models/transformer.yaml - Transformer encoder model configuration
+# Inherits from shared.yaml, overrides where needed
+
+model:
+  name: "transformer"
+
+  # Dataset
+  dataset:
+    window_size: 128
+    overlap: 0.5
+
+  # Transformer Encoder
+  transformer:
+    input_channels: 9
+    d_model: 64
+    nhead: 8
+    num_layers: 4
+    dim_feedforward: 128
+    pooling: "cls"        # "cls" or "mean"
+
+  # Classification Head
+  classifier:
+    num_classes: 6
+
+  # Regularization
+  dropout: 0.2
+
+# Override training for this model
+training:
+  batch_size: 32
+  num_epochs: 30
+  learning_rate: 0.0005
+  weight_decay: 1e-5
+  patience: 15
+
+# Optimization specifics
+optimizer:
+  type: "adam"
+  beta1: 0.9
+  beta2: 0.999
+  eps: 1e-8
+
+# Learning rate schedule
+lr_schedule:
+  type: "cosine"
+  min_lr: 1e-5
+
+# MLflow tracking
+mlflow:
+  experiment_name: "UCI_HAR_Transformer"
+  run_name: "transformer_windowed_v1"
+  tags:
+    model_type: "transformer"
+    approach: "supervised"
+    feature_type: "learned_from_raw_signals"
+    data_format: "windowed"
