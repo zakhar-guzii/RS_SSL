@@ -65,6 +65,16 @@ data/uci_har/
     └── Inertial Signals/      # 9 raw signal files
 ```
 
+## Backend / API
+
+A FastAPI service in `src/server/` classifies phone accelerometer Recordings into one of five Activities (`downstairs`, `sit`, `stand`, `upstairs`, `walk`), serving whichever trained Model Bundles are in `models/`.
+
+```bash
+HAR_MODELS_DIR=models PYTHONPATH=src uv run uvicorn server.app:build_default_app --factory --host 0.0.0.0 --port 8000
+```
+
+Full API contract, error codes, and unit-conversion gotchas: [`docs/api.md`](docs/api.md). Interactive reference once running: `http://<host>:8000/docs`. Runnable client example simulating a phone: [`examples/simulate_phone.py`](examples/simulate_phone.py).
+
 ## MLflow Tracking
 
 View experiment results:

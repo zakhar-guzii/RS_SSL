@@ -11,13 +11,15 @@ from typing import Dict, List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from .bundle import ModelBundle, load_bundles
 from .predictor import TooShortError
 
 
 class PredictRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     model_id: str
     units: str  # "g" or "m/s2"
     samples: List[List[float]]  # rows of [t_ns, x, y, z]
