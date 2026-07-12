@@ -43,6 +43,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from ssl_pretrain import (
     DATASET_CONFIG,
     SSLEncoder,
+    SSLClassifier,
     load_merged,
     set_seed,
     label_budget_sweep,
@@ -81,7 +82,7 @@ CENTER_MOMENTUM            = 0.9
 MOMENTUM_BASE   = 0.996
 MOMENTUM_FINAL  = 1.0
 
-PRETRAIN_EPOCHS = 30
+PRETRAIN_EPOCHS = 10
 PRETRAIN_LR     = 1e-3
 
 
@@ -351,12 +352,34 @@ def run_ssl():
         trained_encoder = pretrain(model, train_loader, device)
 
         # ── Phase 2: Label budget sweep (shared with data2vec) ──
-        results = label_budget_sweep(
+        results, full_encoder, full_head = label_budget_sweep(
             trained_encoder, full_train_ds, val_loader, test_loader, cfg_mode, device
         )
 
         # ── Log encoder ──
         mlflow.pytorch.log_model(trained_encoder, "ssl_encoder")
+
+        # ── Export Model Bundle (100%-label-budget fine-tune; ADR 0002) ──
+        from server.bundle import save_bundle
+
+        save_bundle(
+            model=SSLClassifier(full_encoder, full_head),
+            arch={
+                "type": "ssl_encoder",
+                "in_channels": DATASET_CONFIG["in_channels"],
+                "hidden_dim": HIDDEN_DIM,
+                "num_classes": DATASET_CONFIG["num_classes"],
+            },
+            norm_mean=full_train_ds.norm_mean,
+            norm_std=full_train_ds.norm_std,
+            label_order=DATASET_CONFIG["label_names"],
+            models_dir=os.path.join(repo_root, "models"),
+            id="ssl_dinov2",
+            display_name="DINOv2 (SSL-pretrained)",
+            description="CNN encoder pretrained with DINOv2-style self-distillation, fine-tuned on 100% of labels.",
+            ssl_pretrained=True,
+            is_default=False,
+        )
 
     print("\n✓ Done. Run `uv run mlflow ui` to inspect results.")
 

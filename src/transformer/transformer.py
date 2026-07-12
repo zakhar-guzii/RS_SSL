@@ -138,7 +138,7 @@ def log_model_to_mlflow(model, test_dataloader, device, mlflow):
 
 
 def run_transformer_classifier():
-    config = ConfigLoader().load_experiment("uci_har", "transformer")
+    config = ConfigLoader().load_experiment("har_merged", "transformer")
 
     seed = config["training"].get("seed", 42)
     set_seed(seed)
@@ -150,8 +150,6 @@ def run_transformer_classifier():
     print("=" * 60)
     print(f"Device: {device}")
     print(f"Seed: {seed}")
-    print(f"Window size: {config['model']['dataset']['window_size']}")
-    print(f"Overlap: {config['model']['dataset']['overlap']}")
     print(f"Batch size: {config['training']['batch_size']}")
     print(f"Learning rate: {config['training']['learning_rate']}")
     print(f"Num epochs: {config['training']['num_epochs']}")
@@ -166,9 +164,7 @@ def run_transformer_classifier():
         mlflow.set_tags(config["mlflow"]["tags"])
 
         mlflow.log_params({
-            "dataset": "uci_har",
-            "window_size": config["model"]["dataset"]["window_size"],
-            "overlap": config["model"]["dataset"]["overlap"],
+            "dataset": "har_merged",
             "seed": seed,
             "device": device,
         })
@@ -216,6 +212,35 @@ def run_transformer_classifier():
         print("=" * 60 + "\n")
 
         log_model_to_mlflow(model, test_dataloader, device, mlflow)
+
+        # ── Export Model Bundle ──
+        from server.bundle import save_bundle
+
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+        save_bundle(
+            model=model,
+            arch={
+                "type": "transformer",
+                "input_channels": t_cfg["input_channels"],
+                "d_model": t_cfg["d_model"],
+                "nhead": t_cfg["nhead"],
+                "num_layers": t_cfg["num_layers"],
+                "dim_feedforward": t_cfg["dim_feedforward"],
+                "num_classes": config["model"]["classifier"]["num_classes"],
+                "window_size": config["model"]["dataset"]["window_size"],
+                "dropout": config["model"]["dropout"],
+                "pooling": t_cfg.get("pooling", "cls"),
+            },
+            norm_mean=train_dataset.norm_mean,
+            norm_std=train_dataset.norm_std,
+            label_order=LABEL_NAMES,
+            models_dir=os.path.join(repo_root, "models"),
+            id="transformer",
+            display_name="Transformer (supervised)",
+            description="Supervised Transformer encoder over raw signal windows, trained on 100% of the merged dataset's labels.",
+            ssl_pretrained=False,
+            is_default=False,
+        )
 
 
 if __name__ == "__main__":

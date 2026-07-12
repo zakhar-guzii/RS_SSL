@@ -52,8 +52,8 @@ EMA_DECAY       = 0.999
 MASK_RATIO      = 0.40
 HIDDEN_DIM      = 128
 BATCH_SIZE      = 64
-PRETRAIN_EPOCHS  = 30
-FINETUNE_EPOCHS  = 30
+PRETRAIN_EPOCHS  = 10
+FINETUNE_EPOCHS  = 10
 PRETRAIN_LR      = 1e-3
 HEAD_LR          = 1e-3
 FINETUNE_LR      = 1e-4   # lower LR for encoder during fine-tuning
@@ -105,6 +105,21 @@ class SSLEncoder(nn.Module):
     def forward(self, x):
         # x: (B, T, C) → (B, C, T) for Conv1d
         return self.proj(self.conv(x.transpose(1, 2)))
+
+
+class SSLClassifier(nn.Module):
+    """Encoder + linear head combined into one module, so a fine-tuned SSL
+    model has a single state_dict for Model Bundle export/inference —
+    mirrors how the supervised architectures (CNNClassifier, etc.) already
+    package encoder+head as one module."""
+
+    def __init__(self, encoder: SSLEncoder, head: nn.Module):
+        super().__init__()
+        self.encoder = encoder
+        self.head = head
+
+    def forward(self, x):
+        return self.head(self.encoder(x))
 
 
 # ─────────────────────────────────────────────
@@ -325,7 +340,7 @@ def train_probe_for_budget(encoder, full_train_ds, val_loader, test_loader,
     test_f1  = f1_score(labels_t, preds_t, average="macro")
     test_acc = balanced_accuracy_score(labels_t, preds_t)
 
-    return test_f1, test_acc, labels_t, preds_t
+    return test_f1, test_acc, labels_t, preds_t, ft_encoder, head
 
 
 # ─────────────────────────────────────────────
@@ -336,6 +351,10 @@ def label_budget_sweep(encoder, full_train_ds, val_loader, test_loader, cfg, dev
     """
     Train linear probe for each label budget and print comparison table.
     This is the core experiment of the project.
+
+    Returns ``(results, full_budget_encoder, full_budget_head)`` — the fine-tuned
+    encoder+head from the 100%-label-budget run, which is what gets exported as
+    the deployable Model Bundle (see ADR 0002; the sweep itself stays MLflow-only).
     """
     cfg_mode = DATASET_CONFIG
 
@@ -346,11 +365,12 @@ def label_budget_sweep(encoder, full_train_ds, val_loader, test_loader, cfg, dev
     print()
 
     results = {}
+    full_budget_encoder, full_budget_head = None, None
 
     for budget in LABEL_BUDGETS:
         pct = int(budget * 100)
         print(f"  ── {pct}% labels ──")
-        f1, acc, labels, preds = train_probe_for_budget(
+        f1, acc, labels, preds, ft_encoder, head = train_probe_for_budget(
             encoder, full_train_ds, val_loader, test_loader,
             budget=budget, cfg=cfg_mode, device=device
         )
@@ -358,6 +378,9 @@ def label_budget_sweep(encoder, full_train_ds, val_loader, test_loader, cfg, dev
         mlflow.log_metric(f"ssl_probe_f1_macro_{pct}pct", f1)
         mlflow.log_metric(f"ssl_probe_balanced_acc_{pct}pct", acc)
         print(f"     F1 Macro: {f1:.4f}  |  Balanced Acc: {acc:.4f}")
+
+        if budget == 1.0:
+            full_budget_encoder, full_budget_head = ft_encoder, head
 
         # Full classification report for 100% budget
         if budget == 1.0:
@@ -397,7 +420,7 @@ def label_budget_sweep(encoder, full_train_ds, val_loader, test_loader, cfg, dev
     achieved = results.get(1, {}).get("f1_macro", 0) >= 0.925
     print(f"  Goal achieved: {'✓ YES' if achieved else '✗ NO (discuss why)'}")
 
-    return results
+    return results, full_budget_encoder, full_budget_head
 
 
 # ─────────────────────────────────────────────
@@ -451,12 +474,34 @@ def run_ssl():
         trained_encoder = pretrain(model, train_loader, device)
 
         # ── Phase 2: Label budget sweep ──
-        results = label_budget_sweep(
+        results, full_encoder, full_head = label_budget_sweep(
             trained_encoder, full_train_ds, val_loader, test_loader, cfg_mode, device
         )
 
         # ── Log encoder ──
         mlflow.pytorch.log_model(trained_encoder, "ssl_encoder")
+
+        # ── Export Model Bundle (100%-label-budget fine-tune; ADR 0002) ──
+        from server.bundle import save_bundle
+
+        save_bundle(
+            model=SSLClassifier(full_encoder, full_head),
+            arch={
+                "type": "ssl_encoder",
+                "in_channels": DATASET_CONFIG["in_channels"],
+                "hidden_dim": HIDDEN_DIM,
+                "num_classes": DATASET_CONFIG["num_classes"],
+            },
+            norm_mean=full_train_ds.norm_mean,
+            norm_std=full_train_ds.norm_std,
+            label_order=DATASET_CONFIG["label_names"],
+            models_dir=os.path.join(repo_root, "models"),
+            id="ssl_data2vec",
+            display_name="Data2Vec (SSL-pretrained)",
+            description="CNN encoder pretrained with data2vec self-distillation, fine-tuned on 100% of labels.",
+            ssl_pretrained=True,
+            is_default=False,
+        )
 
     print("\n✓ Done. Run `uv run mlflow ui` to inspect results.")
 

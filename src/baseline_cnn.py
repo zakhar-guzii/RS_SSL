@@ -1,3 +1,4 @@
+import os
 import mlflow
 import mlflow.pytorch
 import mlflow.models
@@ -316,6 +317,34 @@ def run_cnn_baseline():
         evaluate_and_log(model, test_dataloader, device, mlflow)
 
         log_model_to_mlflow(model, test_dataloader, device, mlflow)
+
+        # ── Export Model Bundle ──
+        from server.bundle import save_bundle
+
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+        save_bundle(
+            model=model,
+            arch={
+                "type": "cnn",
+                "input_channels": config["model"]["cnn"]["input_channels"],
+                "conv_out_channels": config["model"]["cnn"]["conv_out_channels"],
+                "kernel_size": config["model"]["cnn"]["kernel_size"],
+                "padding": config["model"]["cnn"]["padding"],
+                "pool_kernel": config["model"]["cnn"]["pool_kernel"],
+                "num_classes": config["model"]["classifier"]["num_classes"],
+                "hidden_dim": config["model"]["classifier"]["hidden_dim"],
+                "dropout": config["model"]["dropout"],
+            },
+            norm_mean=train_dataset.norm_mean,
+            norm_std=train_dataset.norm_std,
+            label_order=LABEL_NAMES,
+            models_dir=os.path.join(repo_root, "models"),
+            id="baseline_cnn",
+            display_name="CNN (supervised baseline)",
+            description="Plain supervised CNN classifier, trained on 100% of the merged dataset's labels.",
+            ssl_pretrained=False,
+            is_default=True,
+        )
 
 
 if __name__ == "__main__":

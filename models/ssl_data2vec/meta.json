@@ -1,0 +1,44 @@
+{
+  "id": "ssl_data2vec",
+  "display_name": "Data2Vec (SSL-pretrained)",
+  "description": "CNN encoder pretrained with data2vec self-distillation, fine-tuned on 100% of labels.",
+  "ssl_pretrained": true,
+  "is_default": false,
+  "arch": {
+    "type": "ssl_encoder",
+    "in_channels": 3,
+    "hidden_dim": 128,
+    "num_classes": 5
+  },
+  "norm_mean": [
+    [
+      [
+        0.002261882182210684,
+        0.0005152778467163444,
+        -0.0009599638869985938
+      ]
+    ]
+  ],
+  "norm_std": [
+    [
+      [
+        0.9981024861335754,
+        0.9969605803489685,
+        0.9982568025588989
+      ]
+    ]
+  ],
+  "label_order": [
+    "downstairs",
+    "sit",
+    "stand",
+    "upstairs",
+    "walk"
+  ],
+  "input": {
+    "window": 128,
+    "channels": 3,
+    "hz": 50,
+    "units": "g"
+  }
+}

@@ -4,14 +4,16 @@
 model:
   name: "transformer"
 
-  # Dataset
+  # Dataset (window_size sizes the positional embedding; overlap is vestigial
+  # now that this model trains on the merged dataset, pre-cut into 128-sample
+  # windows)
   dataset:
     window_size: 128
     overlap: 0.5
 
   # Transformer Encoder
   transformer:
-    input_channels: 9
+    input_channels: 3
     d_model: 64
     nhead: 8
     num_layers: 4
@@ -20,7 +22,7 @@ model:
 
   # Classification Head
   classifier:
-    num_classes: 6
+    num_classes: 5
 
   # Regularization
   dropout: 0.2
@@ -28,10 +30,10 @@ model:
 # Override training for this model
 training:
   batch_size: 32
-  num_epochs: 30
+  num_epochs: 10
   learning_rate: 0.0005
   weight_decay: 1e-5
-  patience: 15
+  patience: 5
 
 # Optimization specifics
 optimizer:
@@ -47,10 +49,11 @@ lr_schedule:
 
 # MLflow tracking
 mlflow:
-  experiment_name: "UCI_HAR_Transformer"
-  run_name: "transformer_windowed_v1"
+  experiment_name: "HAR_Merged_Transformer"
+  run_name: "transformer_merged_v1"
   tags:
     model_type: "transformer"
     approach: "supervised"
     feature_type: "learned_from_raw_signals"
     data_format: "windowed"
+    dataset: "har_merged"

@@ -53,6 +53,43 @@ def load_bundle(path: Path) -> ModelBundle:
     )
 
 
+def save_bundle(
+    model: torch.nn.Module,
+    arch: Dict,
+    norm_mean,
+    norm_std,
+    label_order,
+    models_dir: Path,
+    id: str,
+    display_name: str,
+    description: str,
+    ssl_pretrained: bool,
+    is_default: bool,
+) -> Path:
+    """Write a Model Bundle to ``<models_dir>/<id>/`` (training-side counterpart
+    to :func:`load_bundle`). ``arch`` must be the exact config :func:`build_model`
+    needs to reconstruct this model's architecture."""
+    bundle_dir = Path(models_dir) / id
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+
+    torch.save(model.state_dict(), bundle_dir / "weights.pt")
+
+    meta = {
+        "id": id,
+        "display_name": display_name,
+        "description": description,
+        "ssl_pretrained": bool(ssl_pretrained),
+        "is_default": bool(is_default),
+        "arch": arch,
+        "norm_mean": np.asarray(norm_mean, dtype=np.float32).tolist(),
+        "norm_std": np.asarray(norm_std, dtype=np.float32).tolist(),
+        "label_order": list(label_order),
+        "input": {"window": 128, "channels": 3, "hz": 50, "units": "g"},
+    }
+    (bundle_dir / "meta.json").write_text(json.dumps(meta, indent=2))
+    return bundle_dir
+
+
 def load_bundles(models_dir: Path) -> Dict[str, ModelBundle]:
     """Scan ``models_dir`` for bundle subdirectories. Fail loudly if the set is
     malformed (duplicate ids, or not exactly one default)."""

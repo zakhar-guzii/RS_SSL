@@ -1,0 +1,53 @@
+{
+  "id": "baseline_cnn",
+  "display_name": "CNN (supervised baseline)",
+  "description": "Plain supervised CNN classifier, trained on 100% of the merged dataset's labels.",
+  "ssl_pretrained": false,
+  "is_default": true,
+  "arch": {
+    "type": "cnn",
+    "input_channels": 3,
+    "conv_out_channels": [
+      64,
+      128,
+      128
+    ],
+    "kernel_size": 5,
+    "padding": 2,
+    "pool_kernel": 2,
+    "num_classes": 5,
+    "hidden_dim": 64,
+    "dropout": 0.4
+  },
+  "norm_mean": [
+    [
+      [
+        0.002261882182210684,
+        0.0005152778467163444,
+        -0.0009599638869985938
+      ]
+    ]
+  ],
+  "norm_std": [
+    [
+      [
+        0.9981024861335754,
+        0.9969605803489685,
+        0.9982568025588989
+      ]
+    ]
+  ],
+  "label_order": [
+    "downstairs",
+    "sit",
+    "stand",
+    "upstairs",
+    "walk"
+  ],
+  "input": {
+    "window": 128,
+    "channels": 3,
+    "hz": 50,
+    "units": "g"
+  }
+}

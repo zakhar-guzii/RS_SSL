@@ -1,0 +1,50 @@
+{
+  "id": "transformer",
+  "display_name": "Transformer (supervised)",
+  "description": "Supervised Transformer encoder over raw signal windows, trained on 100% of the merged dataset's labels.",
+  "ssl_pretrained": false,
+  "is_default": false,
+  "arch": {
+    "type": "transformer",
+    "input_channels": 3,
+    "d_model": 64,
+    "nhead": 8,
+    "num_layers": 4,
+    "dim_feedforward": 128,
+    "num_classes": 5,
+    "window_size": 128,
+    "dropout": 0.2,
+    "pooling": "cls"
+  },
+  "norm_mean": [
+    [
+      [
+        0.002261882182210684,
+        0.0005152778467163444,
+        -0.0009599638869985938
+      ]
+    ]
+  ],
+  "norm_std": [
+    [
+      [
+        0.9981024861335754,
+        0.9969605803489685,
+        0.9982568025588989
+      ]
+    ]
+  ],
+  "label_order": [
+    "downstairs",
+    "sit",
+    "stand",
+    "upstairs",
+    "walk"
+  ],
+  "input": {
+    "window": 128,
+    "channels": 3,
+    "hz": 50,
+    "units": "g"
+  }
+}

@@ -1,3 +1,4 @@
+import os
 import mlflow
 import mlflow.pytorch
 import mlflow.models
@@ -6,25 +7,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 from sklearn.metrics import balanced_accuracy_score, classification_report, f1_score, confusion_matrix, ConfusionMatrixDisplay
-from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 from typing import Tuple
 
-from torch_dataset import CustomDataset
 from config_loader import ConfigLoader
+from merged_dataset import load_and_prepare_data
 
 
 LABEL_NAMES = [
-    "WALKING",
-    "WALKING_UPSTAIRS",
-    "WALKING_DOWNSTAIRS",
-    "SITTING",
-    "STANDING",
-    "LAYING",
+    "downstairs",
+    "sit",
+    "stand",
+    "upstairs",
+    "walk",
 ]
 
 
@@ -184,31 +183,6 @@ def evaluate(model: nn.Module, test_loader: DataLoader, device) -> Tuple[np.ndar
     return all_preds, all_labels
 
 
-def load_and_prepare_data(config):
-    window_size = config["model"]["dataset"]["window_size"]
-    overlap = config["model"]["dataset"]["overlap"]
-
-    train_dataset = CustomDataset("uci_har", "train", window_size=window_size, overlap=overlap)
-    
-    norm_mean = train_dataset.norm_mean
-    norm_std = train_dataset.norm_std
-    
-    test_dataset = CustomDataset("uci_har", "test", window_size=window_size, overlap=overlap, norm_mean=norm_mean, norm_std=norm_std)
-    
-    train_indices, val_indices = train_test_split(
-        range(len(train_dataset)),
-        test_size=0.2,
-        random_state=42
-    )
-    
-    batch_size = config["training"]["batch_size"]
-    train_dataloader = DataLoader(Subset(train_dataset, train_indices), batch_size=batch_size, shuffle=True)
-    val_dataloader = DataLoader(Subset(train_dataset, val_indices), batch_size=batch_size, shuffle=False)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-    
-    return train_dataloader, val_dataloader, test_dataloader, train_dataset, test_dataset
-
-
 def build_model(config, device):
     """Create and move model to device."""
     model = ActivityClassifier(
@@ -328,7 +302,7 @@ def log_model_to_mlflow(model, test_dataloader, device, mlflow):
 
 
 def run_cnn_lstm_classifier():
-    config = ConfigLoader().load_experiment("uci_har", "cnn_lstm")
+    config = ConfigLoader().load_experiment("har_merged", "cnn_lstm")
 
     seed = config["training"].get("seed", 42)
     set_seed(seed)
@@ -340,8 +314,6 @@ def run_cnn_lstm_classifier():
     print("=" * 60)
     print(f"Device: {device}")
     print(f"Seed: {seed}")
-    print(f"Window size: {config['model']['dataset']['window_size']}")
-    print(f"Overlap: {config['model']['dataset']['overlap']}")
     print(f"Batch size: {config['training']['batch_size']}")
     print(f"Learning rate: {config['training']['learning_rate']}")
     print(f"Num epochs: {config['training']['num_epochs']}")
@@ -356,9 +328,7 @@ def run_cnn_lstm_classifier():
         mlflow.set_tags(config["mlflow"]["tags"])
 
         mlflow.log_params({
-            "dataset": "uci_har",
-            "window_size": config["model"]["dataset"]["window_size"],
-            "overlap": config["model"]["dataset"]["overlap"],
+            "dataset": "har_merged",
             "seed": seed,
             "device": device,
         })
@@ -391,6 +361,35 @@ def run_cnn_lstm_classifier():
         evaluate_and_log(model, test_dataloader, device, mlflow)
 
         log_model_to_mlflow(model, test_dataloader, device, mlflow)
+
+        # ── Export Model Bundle ──
+        from server.bundle import save_bundle
+
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+        save_bundle(
+            model=model,
+            arch={
+                "type": "cnn_lstm",
+                "input_channels": config["model"]["cnn"]["input_channels"],
+                "conv_out_channels": config["model"]["cnn"]["conv_out_channels"],
+                "kernel_size": config["model"]["cnn"]["kernel_size"],
+                "padding": config["model"]["cnn"]["padding"],
+                "pool_kernel": config["model"]["cnn"]["pool_kernel"],
+                "feature_dim": config["model"]["lstm"]["feature_dim"],
+                "hidden_dim": config["model"]["lstm"]["hidden_dim"],
+                "num_classes": config["model"]["classifier"]["num_classes"],
+                "num_layers": config["model"]["lstm"]["num_layers"],
+            },
+            norm_mean=train_dataset.norm_mean,
+            norm_std=train_dataset.norm_std,
+            label_order=LABEL_NAMES,
+            models_dir=os.path.join(repo_root, "models"),
+            id="cnn_lstm",
+            display_name="CNN-LSTM (supervised)",
+            description="Supervised CNN feature extractor + LSTM temporal encoder, trained on 100% of the merged dataset's labels.",
+            ssl_pretrained=False,
+            is_default=False,
+        )
 
 
 if __name__ == "__main__":

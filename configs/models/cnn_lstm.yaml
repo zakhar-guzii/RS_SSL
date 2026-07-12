@@ -4,14 +4,15 @@
 model:
   name: "cnn_lstm"
 
-  # Dataset
+  # Dataset (window_size/overlap are vestigial now that this model trains on
+  # the merged dataset, which arrives pre-cut into 128-sample windows)
   dataset:
     window_size: 128
     overlap: 0.5
 
   # CNN Feature Extractor
   cnn:
-    input_channels: 9
+    input_channels: 3
     conv_out_channels: [64, 128, 128]
     kernel_size: 5
     padding: 2
@@ -27,7 +28,7 @@ model:
 
   # Classification Head
   classifier:
-    num_classes: 6
+    num_classes: 5
     hidden_dim: 64
 
   # Regularization
@@ -37,10 +38,10 @@ model:
 # Override training for this model
 training:
   batch_size: 32
-  num_epochs: 30
+  num_epochs: 10
   learning_rate: 0.001
   weight_decay: 1e-5
-  patience: 15
+  patience: 5
   warmup_epochs: 5  # Learning rate warmup
 
 # Optimization specifics for LSTM models
@@ -58,10 +59,11 @@ lr_schedule:
 
 # MLflow tracking
 mlflow:
-  experiment_name: "UCI_HAR_CNN_LSTM"
-  run_name: "cnn_lstm_windowed_v1"
+  experiment_name: "HAR_Merged_CNN_LSTM"
+  run_name: "cnn_lstm_merged_v1"
   tags:
     model_type: "cnn_lstm"
     approach: "supervised"
     feature_type: "learned_from_raw_signals"
     data_format: "windowed"
+    dataset: "har_merged"
