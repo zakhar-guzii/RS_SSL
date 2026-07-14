@@ -20,9 +20,9 @@ def _uniform_recording_g(n_samples, hz=50, seed=0):
     rng = np.random.default_rng(seed)
     dt_ns = int(1e9 / hz)
     t = np.arange(n_samples, dtype=np.int64) * dt_ns
-    xyz = rng.normal(loc=[0.0, 0.0, 1.0], scale=0.1, size=(n_samples, 3))
-    return [[int(t[i]), float(xyz[i, 0]), float(xyz[i, 1]), float(xyz[i, 2])]
-            for i in range(n_samples)]
+    acc = rng.normal(loc=[0.0, 0.0, 1.0], scale=0.1, size=(n_samples, 3))
+    gyro = rng.normal(loc=[0.0, 0.0, 0.0], scale=0.5, size=(n_samples, 3))
+    return [[int(t[i]), *acc[i].tolist(), *gyro[i].tolist()] for i in range(n_samples)]
 
 
 class _FixedLogitsModel(nn.Module):
@@ -46,8 +46,8 @@ def _numpy_softmax(logits):
 def test_too_short_recording_raises():
     predictor = Predictor(
         model=_FixedLogitsModel(np.zeros((1, 5), np.float32)),
-        norm_mean=np.zeros((1, 1, 3), np.float32),
-        norm_std=np.ones((1, 1, 3), np.float32),
+        norm_mean=np.zeros((1, 1, 6), np.float32),
+        norm_std=np.ones((1, 1, 6), np.float32),
         label_order=LABEL_ORDER,
     )
     with pytest.raises(TooShortError):
@@ -55,12 +55,12 @@ def test_too_short_recording_raises():
 
 
 class _EchoChannelMeanModel(nn.Module):
-    """logits[:, :3] = per-Window channel means of the (normalized) input."""
+    """logits[:, :3] = per-Window means of the first 3 (accel) input channels."""
 
-    def forward(self, x):  # x: (N, 128, 3)
+    def forward(self, x):  # x: (N, 128, 6)
         n = x.shape[0]
         out = torch.full((n, 5), -1e9, dtype=torch.float32)
-        out[:, :3] = x.mean(dim=1)
+        out[:, :3] = x.mean(dim=1)[:, :3]
         return out
 
 
@@ -68,8 +68,8 @@ def test_normalization_is_applied_per_bundle():
     from server.preprocessing import to_canonical_windows
 
     samples = _uniform_recording_g(400, seed=3)
-    norm_mean = np.array([[[0.01, -0.02, 0.98]]], dtype=np.float32)
-    norm_std = np.array([[[0.30, 0.30, 0.35]]], dtype=np.float32)
+    norm_mean = np.array([[[0.01, -0.02, 0.98, 0.0, 0.0, 0.0]]], dtype=np.float32)
+    norm_std = np.array([[[0.30, 0.30, 0.35, 0.50, 0.50, 0.50]]], dtype=np.float32)
 
     predictor = Predictor(
         model=_EchoChannelMeanModel(),
@@ -77,11 +77,11 @@ def test_normalization_is_applied_per_bundle():
     )
     pred = predictor.predict(samples, units="g")
 
-    # Independently reproduce: normalize, echo channel means, softmax, mean.
+    # Independently reproduce: normalize, echo accel channel means, softmax, mean.
     windows = to_canonical_windows(samples, units="g")
     normed = (windows - norm_mean) / norm_std
     logits = np.full((windows.shape[0], 5), -1e9, dtype=np.float32)
-    logits[:, :3] = normed.mean(axis=1)
+    logits[:, :3] = normed.mean(axis=1)[:, :3]
     mean_probs = _numpy_softmax(logits).mean(axis=0)
 
     assert pred["activity"] == LABEL_ORDER[int(mean_probs.argmax())]
@@ -102,8 +102,8 @@ def test_prediction_is_mean_softmax_then_argmax():
 
     predictor = Predictor(
         model=_FixedLogitsModel(logits),
-        norm_mean=np.zeros((1, 1, 3), np.float32),
-        norm_std=np.ones((1, 1, 3), np.float32),
+        norm_mean=np.zeros((1, 1, 6), np.float32),
+        norm_std=np.ones((1, 1, 6), np.float32),
         label_order=LABEL_ORDER,
     )
     pred = predictor.predict(samples, units="g")

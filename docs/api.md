@@ -1,6 +1,6 @@
 # HAR Backend API
 
-The Backend classifies a phone accelerometer Recording into one of five Activities: `downstairs`, `sit`, `stand`, `upstairs`, `walk`. It does all preprocessing itself — see [ADR 0001](adr/0001-backend-owns-preprocessing.md) — so a client only needs to capture raw samples and declare their units.
+The Backend classifies a phone Recording — **accelerometer + gyroscope** — into one of five Activities: `downstairs`, `sit`, `stand`, `upstairs`, `walk`. It does all preprocessing itself — see [ADR 0001](adr/0001-backend-owns-preprocessing.md) — so a client only needs to capture raw samples and declare their accelerometer units.
 
 Domain terms (App, Activity, Recording, Canonical Signal, Window, Prediction, Model Bundle) are defined in [`CONTEXT.md`](../CONTEXT.md).
 
@@ -42,15 +42,15 @@ Classifies one Recording.
 {
   "model_id": "baseline_cnn",
   "units": "g",
-  "samples": [[0, 0.01, -0.02, 0.99], [20000000, 0.02, -0.01, 1.0], ...]
+  "samples": [[0, 0.01, -0.02, 0.99, 0.05, -0.03, 0.01], [20000000, 0.02, -0.01, 1.0, 0.04, -0.02, 0.0], ...]
 }
 ```
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `model_id` | string | Must be an `id` from `GET /models`. |
-| `units` | `"g"` \| `"m/s2"` | Unit of every sample's `x, y, z`. **Android's `SensorEvent` reports m/s²; iOS's `CMAccelerometerData` reports g.** Get this wrong and every prediction is silently wrong — nothing else will error. |
-| `samples` | array of `[t, x, y, z]` | **`t` is a timestamp in nanoseconds** (an integer, e.g. from `System.nanoTime()` / a monotonic clock) — not seconds, not milliseconds. Samples need not be evenly spaced or sorted; the Backend resamples to 50 Hz and sorts internally. Any length is valid as long as it yields at least one 128-sample Window at 50 Hz (~2.56 s of continuous signal after resampling); shorter is rejected with `422`. |
+| `units` | `"g"` \| `"m/s2"` | Unit of the **accelerometer** channels (`ax, ay, az`) only. **Android's `SensorEvent` reports m/s²; iOS's `CMAccelerometerData` reports g.** Get this wrong and every prediction is silently wrong — nothing else will error. Gyroscope is **always rad/s** (native on both iOS CoreMotion and Android) and is never converted — there is no unit field for it. |
+| `samples` | array of `[t, ax, ay, az, gx, gy, gz]` | Seven values per row: nanosecond timestamp + 3 accelerometer + 3 gyroscope channels, **in that exact order**. `ax,ay,az` = total acceleration (gravity included) in `units`; `gx,gy,gz` = angular velocity in rad/s. **`t` is a timestamp in nanoseconds** (an integer, e.g. from `System.nanoTime()` / a monotonic clock) — not seconds, not milliseconds. Samples need not be evenly spaced or sorted; the Backend resamples to 50 Hz and sorts internally. Any length is valid as long as it yields at least one 128-sample Window at 50 Hz (~2.56 s of continuous signal after resampling); shorter is rejected with `422`. |
 
 **Response (200):**
 

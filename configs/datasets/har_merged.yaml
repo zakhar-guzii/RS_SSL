@@ -1,4 +1,4 @@
-# datasets/har_merged.yaml - Merged HAR Dataset (UCI HAR + WISDM + MotionSense + HHAR)
+# datasets/har_merged.yaml - Merged HAR Dataset (UCI HAR + MotionSense + HHAR; 6-channel accel+gyro)
 
 dataset:
   name: "har_merged"
@@ -9,10 +9,10 @@ dataset:
     root: "./data/merged/har_merged.npz"
 
   specs:
-    num_samples: 61891
+    num_samples: 59823
     num_classes: 5
-    channels: 3             # 3-axis accelerometer only
-    sources: ["uci", "wisdm", "motionsense", "hhar"]
+    channels: 6             # [ax, ay, az, gx, gy, gz] — accel (g) + gyro (rad/s)
+    sources: ["uci", "motionsense", "hhar"]   # WISDM dropped: accelerometer-only, no gyro
 
   activity_labels:
     0: "downstairs"
@@ -34,4 +34,4 @@ dataset:
 
   input_format:
     sequence_length: 128
-    channels: 3
+    channels: 6

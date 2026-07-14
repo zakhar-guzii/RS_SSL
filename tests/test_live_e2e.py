@@ -32,7 +32,8 @@ def _free_port() -> int:
 
 def _recording(n_samples, hz=50):
     dt_ns = int(1e9 / hz)
-    return [[i * dt_ns, 0.02, 0.01, 1.0] for i in range(n_samples)]
+    # 6-channel: accel (g) + gyro (rad/s)
+    return [[i * dt_ns, 0.02, 0.01, 1.0, 0.05, -0.03, 0.01] for i in range(n_samples)]
 
 
 @pytest.fixture(scope="module")

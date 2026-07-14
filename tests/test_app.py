@@ -13,7 +13,7 @@ from server.bundle import load_bundles
 
 LABEL_ORDER = ["downstairs", "sit", "stand", "upstairs", "walk"]
 ARCH = {
-    "type": "cnn", "input_channels": 3, "conv_out_channels": [16, 32],
+    "type": "cnn", "input_channels": 6, "conv_out_channels": [16, 32],
     "kernel_size": 5, "padding": 2, "pool_kernel": 2,
     "num_classes": 5, "hidden_dim": 32, "dropout": 0.4,
 }
@@ -23,15 +23,15 @@ def _write_bundle(root, bundle_id, is_default, ssl):
     d = root / bundle_id
     d.mkdir(parents=True)
     model = CNNClassifier(
-        input_channels=3, conv_out_channels=[16, 32], kernel_size=5,
+        input_channels=6, conv_out_channels=[16, 32], kernel_size=5,
         padding=2, pool_kernel=2, num_classes=5, hidden_dim=32, dropout=0.4,
     )
     torch.save(model.state_dict(), d / "weights.pt")
     (d / "meta.json").write_text(json.dumps({
         "id": bundle_id, "display_name": f"Model {bundle_id}",
         "description": "test", "ssl_pretrained": ssl, "is_default": is_default,
-        "arch": ARCH, "norm_mean": [[[0.0, 0.0, 1.0]]],
-        "norm_std": [[[0.3, 0.3, 0.3]]], "label_order": LABEL_ORDER,
+        "arch": ARCH, "norm_mean": [[[0.0, 0.0, 1.0, 0.0, 0.0, 0.0]]],
+        "norm_std": [[[0.3, 0.3, 0.3, 0.5, 0.5, 0.5]]], "label_order": LABEL_ORDER,
     }))
 
 
@@ -39,9 +39,9 @@ def _recording(n_samples, hz=50, seed=0):
     rng = np.random.default_rng(seed)
     dt_ns = int(1e9 / hz)
     t = np.arange(n_samples, dtype=np.int64) * dt_ns
-    xyz = rng.normal(loc=[0.0, 0.0, 1.0], scale=0.1, size=(n_samples, 3))
-    return [[int(t[i]), float(xyz[i, 0]), float(xyz[i, 1]), float(xyz[i, 2])]
-            for i in range(n_samples)]
+    acc = rng.normal(loc=[0.0, 0.0, 1.0], scale=0.1, size=(n_samples, 3))
+    gyro = rng.normal(loc=[0.0, 0.0, 0.0], scale=0.5, size=(n_samples, 3))
+    return [[int(t[i]), *acc[i].tolist(), *gyro[i].tolist()] for i in range(n_samples)]
 
 
 @pytest.fixture

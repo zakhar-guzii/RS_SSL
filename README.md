@@ -67,7 +67,7 @@ data/uci_har/
 
 ## Backend / API
 
-A FastAPI service in `src/server/` classifies phone accelerometer Recordings into one of five Activities (`downstairs`, `sit`, `stand`, `upstairs`, `walk`), serving whichever trained Model Bundles are in `models/`.
+A FastAPI service in `src/server/` classifies phone Recordings — accelerometer + gyroscope, 6 channels — into one of five Activities (`downstairs`, `sit`, `stand`, `upstairs`, `walk`), serving whichever trained Model Bundles are in `models/`.
 
 ```bash
 HAR_MODELS_DIR=models PYTHONPATH=src uv run uvicorn server.app:build_default_app --factory --host 0.0.0.0 --port 8000

@@ -12,7 +12,7 @@ model:
 
   # CNN Feature Extractor
   cnn:
-    input_channels: 3
+    input_channels: 6
     conv_out_channels: [64, 128, 128]
     kernel_size: 5
     padding: 2

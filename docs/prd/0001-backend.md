@@ -6,7 +6,7 @@ _Domain vocabulary: see [`CONTEXT.md`](../../CONTEXT.md) (App, Activity, Recordi
 
 ## Problem Statement
 
-A user has a phone in their pocket and wants to know which of five everyday **Activities** they're doing (`downstairs`, `sit`, `stand`, `upstairs`, `walk`). The trained models that can answer this live only inside Jupyter notebooks and MLflow runs — there is no way for a phone to ask them anything. There is also no standardized way to turn a phone's raw, irregularly-sampled accelerometer stream into the exact **Canonical Signal** the models were trained on, so even if a phone could reach the models, the answer would be wrong.
+A user has a phone in their pocket and wants to know which of five everyday **Activities** they're doing (`downstairs`, `sit`, `stand`, `upstairs`, `walk`). The trained models that can answer this live only inside Jupyter notebooks and MLflow runs — there is no way for a phone to ask them anything. There is also no standardized way to turn a phone's raw, irregularly-sampled accelerometer + gyroscope stream into the exact **Canonical Signal** the models were trained on, so even if a phone could reach the models, the answer would be wrong.
 
 On top of that, the training code computes normalization statistics on the fly and **never persists them** (`src/merged_dataset.py:49-51`). Without the exact training-time mean/std, any inference — however well-wired — produces garbage. There is currently no artifact that packages a trained model together with everything needed to reproduce its training-time preprocessing.
 
@@ -92,11 +92,11 @@ Governed by [ADR 0001 — Backend owns all preprocessing](../adr/0001-backend-ow
 
 ### Seam 1 — Preprocessing (pure function, highest-value test seam)
 
-A pure function transforming a raw Recording into model-ready Windows, mirroring the merge notebook (`resample_interp`, `sliding_windows`, `windows_from_ts` in `notebooks/har_merge.ipynb`):
+A pure function transforming a raw Recording into model-ready Windows, mirroring the merge pipeline (`resample_interp`, `sliding_windows`, `windows_from_ts` in `src/data_merge.py`):
 
-- **Signature (shape contract):** `samples: list[[t, x, y, z]]`, `units: "g" | "m/s2"` → `ndarray (n_windows, 128, 3)` float32 of Canonical Signal Windows (pre-normalization).
-- **Steps, in order:** convert to g (divide by 9.80665 if `m/s2`) → sort by timestamp → split into continuous segments where inter-sample interval > `5 × median interval` → linear-interp resample each segment to 50 Hz → sliding windows of length 128, step 64 → drop segments shorter than one Window.
-- Normalization (subtract `norm_mean`, divide by `norm_std`) is applied **per-bundle** downstream (Seam 2), because stats differ per model. Keep this function bundle-agnostic so parity can be tested against the notebook without a model.
+- **Signature (shape contract):** `samples: list[[t, ax, ay, az, gx, gy, gz]]`, `units: "g" | "m/s2"` (accelerometer only) → `ndarray (n_windows, 128, 6)` float32 of Canonical Signal Windows (pre-normalization).
+- **Steps, in order:** convert **accelerometer** channels to g (divide `ax,ay,az` by 9.80665 if `m/s2`; gyroscope `gx,gy,gz` left as rad/s) → sort by timestamp → split into continuous segments where inter-sample interval > `5 × median interval` → linear-interp resample each segment to 50 Hz → sliding windows of length 128, step 64 → drop segments shorter than one Window.
+- Normalization (subtract `norm_mean`, divide by `norm_std`) is applied **per-bundle** downstream (Seam 2), because stats differ per model. Keep this function bundle-agnostic so parity can be tested against the merge pipeline without a model.
 - Returns zero Windows when the Recording yields none; the caller maps that to HTTP 422.
 
 ### Seam 2 — Prediction service + route
@@ -109,7 +109,7 @@ A pure function transforming a raw Recording into model-ready Windows, mirroring
 
 - A bundle is a directory `models/<id>/` containing:
   - `weights.pt` — model `state_dict`.
-  - `meta.json` — `{ id, display_name, description, ssl_pretrained: bool, is_default: bool, arch: {...full architecture config...}, norm_mean, norm_std, label_order: ["downstairs","sit","stand","upstairs","walk"], input: {window: 128, channels: 3, hz: 50, units: "g"} }`.
+  - `meta.json` — `{ id, display_name, description, ssl_pretrained: bool, is_default: bool, arch: {...full architecture config...}, norm_mean, norm_std, label_order: ["downstairs","sit","stand","upstairs","walk"], input: {window: 128, channels: 6, hz: 50, channel_order: ["ax","ay","az","gx","gy","gz"], accel_units: "g", gyro_units: "rad/s"} }`.
 - **`norm_mean` / `norm_std` must be the exact training-split stats.** Persist them from `MergedHARDataset` at train time — this fixes the trap at `src/merged_dataset.py:49-51` where stats are computed and discarded.
 - Add an export step to the training entry points (baseline CNN, CNN-LSTM, transformer, `ssl_pretrain*.py`) that writes the bundle after training. Exactly one bundle across `models/` has `is_default: true`.
 - Architecture reconstruction reuses existing `build_model`-style constructors (`CNNClassifier`, `TransformerClassifier`, etc.) driven by `meta.arch`.
@@ -118,7 +118,7 @@ A pure function transforming a raw Recording into model-ready Windows, mirroring
 
 - `GET /health` → liveness.
 - `GET /models` → list of `{ id, display_name, ssl_pretrained, is_default }`.
-- `POST /predict` → body `{ model_id, units, samples: [[t, x, y, z], ...] }` → Prediction.
+- `POST /predict` → body `{ model_id, units, samples: [[t, ax, ay, az, gx, gy, gz], ...] }` → Prediction.
   - `404` unknown `model_id`.
   - `422` Recording too short (yields zero Windows) or malformed payload.
 
@@ -132,7 +132,7 @@ Good tests here assert **external behavior** — the shape and correctness of Ca
 
 ### Seam 1 — preprocessing parity (the high-value tests; use `/tdd`)
 
-- Feed known merged-dataset content through the pure preprocessing function and **assert near-identity** against the notebook's `windows_from_ts` / `resample_interp` / `sliding_windows` output (allclose within float tolerance). This is the parity guarantee against training.
+- Feed known merged-dataset content through the pure preprocessing function and **assert near-identity** against the merge pipeline's `windows_from_ts` / `resample_interp` / `sliding_windows` output (allclose within float tolerance). This is the parity guarantee against training.
 - Unit conversion: identical Windows whether the same physical signal is sent as `g` or as `m/s2`.
 - Gap-splitting: a Recording with an injected timestamp gap (> 5× median) produces the same segment boundaries as the notebook; no Window straddles the gap.
 - Window geometry: correct `n_windows` for a given length (length 128 → 1, step 64); a sub-Window-length Recording → zero Windows.
@@ -160,8 +160,8 @@ Out of test scope: model accuracy itself (that's an MLflow/training concern), an
 ## Further Notes
 
 - **Blocking prerequisite:** the norm-stats trap at `src/merged_dataset.py:49-51`. The Model Bundle export (which persists training-split `norm_mean`/`norm_std`) must land before any bundle is trustworthy; the user is retraining all models on the merged dataset as part of this work.
-- Reference implementation for resample/window/gap-split lives in `notebooks/har_merge.ipynb` (`resample_interp`, `sliding_windows`, `windows_from_ts`). Constants: `WINDOW=128`, `STEP=64`, `TARGET_HZ=50`, `gap_factor=5`.
-- Verified dataset facts (don't re-derive): merged data is accelerometer-only, total acceleration in **g**, 50 Hz, labels 0–4 alphabetical. Median |a| ≈ 1.25–1.34 across sources.
+- Reference implementation for resample/window/gap-split lives in `src/data_merge.py` (`resample_interp`, `sliding_windows`, `windows_from_ts`, `windows_from_two_streams`). Constants: `WINDOW=128`, `STEP=64`, `TARGET_HZ=50`, `gap_factor=5`.
+- Verified dataset facts (don't re-derive): merged data is 6-channel `[ax,ay,az,gx,gy,gz]` — total acceleration in **g** + angular velocity in **rad/s** — 50 Hz, labels 0–4 alphabetical, from UCI HAR + MotionSense + HHAR (WISDM dropped: accelerometer-only). See [ADR 0003](../adr/0003-canonical-signal-is-6-channel-accel-gyro.md).
 - Config system is hierarchical YAML in `configs/` via `src/config_loader.py`; the Backend should read paths/ports from config where practical rather than hardcoding.
 - Suggested skills for the build: `/tdd` (Seam 1 parity), `/verify` (exercise the running server with the simulated-phone client before commit), `/domain-modeling` (write ADR 0001), `/code-review` (before PR to `baseline`).
 - Port 8000 deliberately avoids MLflow's 5000.

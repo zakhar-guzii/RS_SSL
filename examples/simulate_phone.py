@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Simulates a phone Recording against the HAR Backend.
 
-Builds a synthetic ~15s walking-like accelerometer stream, POSTs it to
-/predict exactly as the real App would, and prints the Prediction. Doubles as
-a runnable reference for the API contract described in docs/api.md.
+Builds a synthetic ~15s walking-like 6-channel stream (accelerometer +
+gyroscope), POSTs it to /predict exactly as the real App would, and prints the
+Prediction. Doubles as a runnable reference for the API contract described in
+docs/api.md.
 
 Stdlib only (urllib) so it runs with no extra installs beyond Python 3.
 
@@ -24,18 +25,28 @@ G = 9.80665
 
 
 def build_recording(duration_s: float, units: str) -> list:
-    """A synthetic walking-like signal: ~1g vertical + a stride oscillation."""
+    """A synthetic walking-like signal: ~1g vertical + a stride oscillation,
+    plus a matching gyroscope (angular velocity, rad/s) stride wobble.
+
+    Each row is 6-channel ``[t_ns, ax, ay, az, gx, gy, gz]``: accelerometer in
+    ``units`` (g or m/s2), gyroscope always in rad/s.
+    """
     n_samples = int(duration_s * HZ)
     samples = []
     for i in range(n_samples):
         t_ns = i * NS_PER_SAMPLE
         stride = math.sin(2 * math.pi * 1.8 * i / HZ)
-        x = 0.15 * stride
-        y = 0.1 * math.sin(2 * math.pi * 0.9 * i / HZ)
-        z = 1.0 + 0.25 * stride
+        # Accelerometer (g)
+        ax = 0.15 * stride
+        ay = 0.1 * math.sin(2 * math.pi * 0.9 * i / HZ)
+        az = 1.0 + 0.25 * stride
         if units == "m/s2":
-            x, y, z = x * G, y * G, z * G
-        samples.append([t_ns, x, y, z])
+            ax, ay, az = ax * G, ay * G, az * G
+        # Gyroscope (rad/s) — never unit-converted
+        gx = 0.6 * math.sin(2 * math.pi * 1.8 * i / HZ + 0.5)
+        gy = 0.4 * math.sin(2 * math.pi * 0.9 * i / HZ)
+        gz = 0.2 * stride
+        samples.append([t_ns, ax, ay, az, gx, gy, gz])
     return samples
 
 

@@ -84,7 +84,9 @@ def save_bundle(
         "norm_mean": np.asarray(norm_mean, dtype=np.float32).tolist(),
         "norm_std": np.asarray(norm_std, dtype=np.float32).tolist(),
         "label_order": list(label_order),
-        "input": {"window": 128, "channels": 3, "hz": 50, "units": "g"},
+        "input": {"window": 128, "channels": 6, "hz": 50,
+                  "channel_order": ["ax", "ay", "az", "gx", "gy", "gz"],
+                  "accel_units": "g", "gyro_units": "rad/s"},
     }
     (bundle_dir / "meta.json").write_text(json.dumps(meta, indent=2))
     return bundle_dir
