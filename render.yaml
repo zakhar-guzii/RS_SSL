@@ -1,0 +1,19 @@
+# Render Blueprint for the HAR Backend.
+# Deploy: Render Dashboard → New → Blueprint → pick this repo, branch `backend`.
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: har-backend
+    runtime: docker
+    branch: backend
+    dockerfilePath: ./Dockerfile
+    # torch + mlflow + pandas + matplotlib imported together exceed 512 MB, so
+    # the free/starter (512 MB) tier will OOM at startup. `standard` is 2 GB.
+    plan: standard
+    healthCheckPath: /health
+    # Redundant with the Dockerfile ENV, but explicit here for clarity.
+    envVars:
+      - key: HAR_MODELS_DIR
+        value: models
+      - key: PYTHONPATH
+        value: src

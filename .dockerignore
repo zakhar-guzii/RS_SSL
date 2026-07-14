@@ -1,0 +1,17 @@
+# Keep the build context small — the Dockerfile only COPYs src/ and models/.
+.git
+.venv
+mlruns
+mlflow.db
+data
+notebooks
+ai_usage
+configs
+handoffs
+docs
+tests
+scripts
+.mypy_cache
+**/__pycache__
+*.pyc
+.DS_Store
