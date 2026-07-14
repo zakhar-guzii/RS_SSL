@@ -225,3 +225,5 @@ data/
 # MLflow tracking
 mlruns/
 mlflow.db
+# local bundle stat backups (rollback for the norm fix)
+models/**/meta.json.bak

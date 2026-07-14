@@ -288,10 +288,13 @@ def merge_and_save(out_path: Path = OUT_DIR / "har_merged.npz") -> None:
 
     X_parts, act_parts, sub_parts, src_parts = [], [], [], []
     for tag, (Xs, acts, subs) in sources.items():
-        # Per-source z-normalization (per channel), matching the original merge.
-        mean = Xs.mean(axis=(0, 1), keepdims=True)
-        std = Xs.std(axis=(0, 1), keepdims=True) + 1e-8
-        X_parts.append((Xs - mean) / std)
+        # Keep RAW canonical windows (g, gravity included). Normalization is
+        # computed once globally below and persisted with the data, so the exact
+        # same transform can be reproduced at inference time. See
+        # ``src/server/predictor.py`` (applies norm_mean/norm_std to live
+        # Recordings) — storing per-source stats and discarding them here was the
+        # train/serve seam that made static poses (sit vs stand) unrecoverable.
+        X_parts.append(Xs)
         act_parts.append(acts)
         sub_parts.append(np.array([f"{tag}_{s}" for s in subs]))
         src_parts.append(np.full(len(Xs), tag))
@@ -302,14 +305,24 @@ def merge_and_save(out_path: Path = OUT_DIR / "har_merged.npz") -> None:
     source = np.concatenate(src_parts)
     y = np.array([LABEL_ENC[a] for a in activity], dtype=np.int32)
 
+    # Single global z-normalization over the pooled raw windows. One transform
+    # (no per-source ambiguity) that a single-device deployment can reproduce.
+    # X is saved RAW; MergedHARDataset applies these stats at load time, and the
+    # same stats flow into each Model Bundle's meta.json via save_bundle(...).
+    norm_mean = X.mean(axis=(0, 1), keepdims=True).astype(np.float32)  # (1,1,6)
+    norm_std = (X.std(axis=(0, 1), keepdims=True) + 1e-8).astype(np.float32)
+
     print(f"\nTotal windows : {X.shape}   (channels: [ax,ay,az,gx,gy,gz])")
     print(f"Label encoding: {LABEL_ENC}")
+    print(f"norm_mean     : {np.ravel(norm_mean)}")
+    print(f"norm_std      : {np.ravel(norm_std)}")
     print(pd.DataFrame({"activity": activity, "source": source})
           .groupby(["source", "activity"]).size().unstack(fill_value=0))
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(str(out_path), X=X, y=y, activity=activity,
-                        subject=subject, source=source)
+                        subject=subject, source=source,
+                        norm_mean=norm_mean, norm_std=norm_std)
     print(f"\nSaved -> {out_path}")
 
 

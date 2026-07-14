@@ -29,6 +29,14 @@ def load_and_prepare_data(config) -> Tuple[DataLoader, DataLoader, DataLoader, "
     X = data["X"].astype(np.float32)
     y = data["y"].astype(np.int64)
 
+    # Raw-domain global normalization stats persisted by data_merge.py. Applying
+    # the *same* stats at train and serve time is what keeps the static poses
+    # (sit vs stand) separable on live Recordings — see src/server/predictor.py.
+    # Legacy npz files that predate persisted stats fall back to computing the
+    # stats from the training split (the previous behaviour).
+    npz_mean = data["norm_mean"].astype(np.float32) if "norm_mean" in data.files else None
+    npz_std = data["norm_std"].astype(np.float32) if "norm_std" in data.files else None
+
     seed = config["training"].get("seed", 42)
     test_ratio = config["dataset"]["split"]["test_ratio"]
     val_ratio = config["dataset"]["split"]["val_ratio"]
@@ -46,7 +54,7 @@ def load_and_prepare_data(config) -> Tuple[DataLoader, DataLoader, DataLoader, "
     X_train, y_train = X_trainval[train_idx], y_trainval[train_idx]
     X_val, y_val = X_trainval[val_idx], y_trainval[val_idx]
 
-    train_dataset = MergedHARDataset(X_train, y_train)
+    train_dataset = MergedHARDataset(X_train, y_train, norm_mean=npz_mean, norm_std=npz_std)
     norm_mean = train_dataset.norm_mean
     norm_std = train_dataset.norm_std
 
