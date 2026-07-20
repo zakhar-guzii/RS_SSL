@@ -1,0 +1,55 @@
+{
+  "id": "ssl_dinov2",
+  "display_name": "DINOv2 (SSL-pretrained)",
+  "description": "CNN encoder pretrained with DINOv2-style self-distillation, fine-tuned on 100% of labels.",
+  "ssl_pretrained": true,
+  "is_default": false,
+  "arch": {
+    "type": "ssl_encoder",
+    "in_channels": 4,
+    "hidden_dim": 128,
+    "num_classes": 5
+  },
+  "norm_mean": [
+    [
+      [
+        1.0041394233703613,
+        0.1407841593027115,
+        0.000287912436760962,
+        0.47138094902038574
+      ]
+    ]
+  ],
+  "norm_std": [
+    [
+      [
+        0.27841922640800476,
+        0.20588243007659912,
+        0.7109649777412415,
+        0.7079521417617798
+      ]
+    ]
+  ],
+  "label_order": [
+    "downstairs",
+    "sit",
+    "stand",
+    "upstairs",
+    "walk"
+  ],
+  "input": {
+    "window": 128,
+    "channels": 6,
+    "hz": 50,
+    "channel_order": [
+      "ax",
+      "ay",
+      "az",
+      "gx",
+      "gy",
+      "gz"
+    ],
+    "accel_units": "g",
+    "gyro_units": "rad/s"
+  }
+}
