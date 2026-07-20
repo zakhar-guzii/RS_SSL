@@ -26,6 +26,8 @@ from typing import List, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
+from canonical import gravity_project
+
 # --------------------------------------------------------------------------
 # Canonical Signal constants
 # --------------------------------------------------------------------------
@@ -34,6 +36,7 @@ STEP = 64
 TARGET_HZ = 50
 GAP_FACTOR = 5  # split segments where interval > GAP_FACTOR x median
 N_CHANNELS = 6  # [ax, ay, az, gx, gy, gz]
+G = 9.80665  # m/s^2 per g — HHAR accel is in m/s^2; UCI, MotionSense & the phone use g
 
 COMMON_ACT = ["walk", "upstairs", "downstairs", "sit", "stand"]
 LABEL_ENC = {a: i for i, a in enumerate(sorted(COMMON_ACT))}  # alphabetical 0..4
@@ -262,7 +265,9 @@ def load_hhar() -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         if gg is None:
             continue
         wins = windows_from_two_streams(
-            ga["time_ns"].values.astype(np.int64), ga[["x", "y", "z"]].values.astype(np.float32),
+            # HHAR accelerometer is m/s^2 -> convert to g so every source (and the
+            # phone, which sends g) shares one scale. Gyro is rad/s everywhere.
+            ga["time_ns"].values.astype(np.int64), ga[["x", "y", "z"]].values.astype(np.float32) / G,
             gg["time_ns"].values.astype(np.int64), gg[["x", "y", "z"]].values.astype(np.float32),
         )
         if len(wins):
@@ -288,13 +293,15 @@ def merge_and_save(out_path: Path = OUT_DIR / "har_merged.npz") -> None:
 
     X_parts, act_parts, sub_parts, src_parts = [], [], [], []
     for tag, (Xs, acts, subs) in sources.items():
-        # Keep RAW canonical windows (g, gravity included). Normalization is
-        # computed once globally below and persisted with the data, so the exact
-        # same transform can be reproduced at inference time. See
-        # ``src/server/predictor.py`` (applies norm_mean/norm_std to live
-        # Recordings) — storing per-source stats and discarding them here was the
-        # train/serve seam that made static poses (sit vs stand) unrecoverable.
-        X_parts.append(Xs)
+        # Project each source's raw device-frame windows onto its own gravity
+        # direction (canonical.gravity_project: 6 raw channels -> 4
+        # orientation-invariant ones). The three sources are mounted differently
+        # (UCI waist, MotionSense pocket, HHAR mixed), so their raw axes are not
+        # comparable; projecting first puts them all in the same frame *before*
+        # pooling. src/server/preprocessing.py applies the identical projection
+        # to live Recordings — that shared transform is what keeps the phone in
+        # distribution regardless of how it's held.
+        X_parts.append(gravity_project(Xs))
         act_parts.append(acts)
         sub_parts.append(np.array([f"{tag}_{s}" for s in subs]))
         src_parts.append(np.full(len(Xs), tag))
@@ -305,14 +312,16 @@ def merge_and_save(out_path: Path = OUT_DIR / "har_merged.npz") -> None:
     source = np.concatenate(src_parts)
     y = np.array([LABEL_ENC[a] for a in activity], dtype=np.int32)
 
-    # Single global z-normalization over the pooled raw windows. One transform
-    # (no per-source ambiguity) that a single-device deployment can reproduce.
-    # X is saved RAW; MergedHARDataset applies these stats at load time, and the
-    # same stats flow into each Model Bundle's meta.json via save_bundle(...).
-    norm_mean = X.mean(axis=(0, 1), keepdims=True).astype(np.float32)  # (1,1,6)
+    # Single global z-normalization over the pooled projected windows. One
+    # transform (no per-source ambiguity) that a single-device deployment can
+    # reproduce. X is saved projected-but-unnormalized; MergedHARDataset applies
+    # these stats at load time, and the same stats flow into each Model Bundle's
+    # meta.json via save_bundle(...). (The model also carries an input
+    # BatchNorm, so these stats are a coarse pre-scale, not the whole story.)
+    norm_mean = X.mean(axis=(0, 1), keepdims=True).astype(np.float32)  # (1,1,4)
     norm_std = (X.std(axis=(0, 1), keepdims=True) + 1e-8).astype(np.float32)
 
-    print(f"\nTotal windows : {X.shape}   (channels: [ax,ay,az,gx,gy,gz])")
+    print(f"\nTotal windows : {X.shape}   (channels: [a_vert,a_horiz,g_vert,g_horiz])")
     print(f"Label encoding: {LABEL_ENC}")
     print(f"norm_mean     : {np.ravel(norm_mean)}")
     print(f"norm_std      : {np.ravel(norm_std)}")

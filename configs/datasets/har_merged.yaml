@@ -11,7 +11,7 @@ dataset:
   specs:
     num_samples: 59823
     num_classes: 5
-    channels: 6             # [ax, ay, az, gx, gy, gz] — accel (g) + gyro (rad/s)
+    channels: 4             # [a_vert, a_horiz, g_vert, g_horiz] — gravity-projected, orientation-invariant
     sources: ["uci", "motionsense", "hhar"]   # WISDM dropped: accelerometer-only, no gyro
 
   activity_labels:
@@ -34,4 +34,4 @@ dataset:
 
   input_format:
     sequence_length: 128
-    channels: 6
+    channels: 4

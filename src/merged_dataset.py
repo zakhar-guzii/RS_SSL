@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -28,6 +29,16 @@ def load_and_prepare_data(config) -> Tuple[DataLoader, DataLoader, DataLoader, "
     data = np.load(npz_path)
     X = data["X"].astype(np.float32)
     y = data["y"].astype(np.int64)
+
+    # HAR_DATA_FRAC<1 keeps a stratified fraction of the whole dataset — a fast
+    # training loop for validating the pipeline end-to-end before a full run.
+    frac = float(os.environ.get("HAR_DATA_FRAC", "1.0"))
+    if frac < 1.0:
+        keep, _ = next(StratifiedShuffleSplit(
+            n_splits=1, train_size=frac, random_state=config["training"].get("seed", 42)
+        ).split(X, y))
+        X, y = X[keep], y[keep]
+        print(f"[HAR_DATA_FRAC={frac}] using {len(y)} of {len(data['y'])} windows")
 
     # Raw-domain global normalization stats persisted by data_merge.py. Applying
     # the *same* stats at train and serve time is what keeps the static poses

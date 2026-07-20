@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 # ─────────────────────────────────────────────
 
 DATASET_CONFIG = {
-    "in_channels": 6,
+    "in_channels": 4,
     "num_classes": 5,
     "label_names": ["downstairs", "sit", "stand", "upstairs", "walk"],
     "npz_path": "./data/merged/har_merged.npz",

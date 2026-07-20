@@ -52,7 +52,11 @@ def plot_confusion_matrix(y_pred, y_true, path: str) -> None:
 class CNNClassifier(nn.Module):
     def __init__(self, input_channels: int, conv_out_channels: list, kernel_size: int, padding: int, pool_kernel: int, num_classes: int, hidden_dim: int = 64, dropout: float = 0.4):
         super(CNNClassifier, self).__init__()
-        layers = []
+        # Normalize the input channels as the first layer, so the learned
+        # mean/var live in the checkpoint and travel with the weights. This is
+        # what stops the train/serve normalization seam from reopening: there is
+        # no separate stats file for serving to apply inconsistently.
+        layers = [nn.BatchNorm1d(input_channels)]
         in_channels = input_channels
 
         for out_channels in conv_out_channels:

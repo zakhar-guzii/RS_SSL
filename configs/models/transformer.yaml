@@ -13,7 +13,7 @@ model:
 
   # Transformer Encoder
   transformer:
-    input_channels: 6
+    input_channels: 4
     d_model: 64
     nhead: 8
     num_layers: 4

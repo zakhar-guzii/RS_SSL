@@ -17,6 +17,8 @@ from typing import Sequence
 
 import numpy as np
 
+from canonical import gravity_project
+
 WINDOW = 128
 STEP = 64
 TARGET_HZ = 50
@@ -88,4 +90,8 @@ def to_canonical_windows(samples: Sequence[Sequence[float]], units: str) -> np.n
 
     if not all_wins:
         return np.empty((0, WINDOW, N_CHANNELS), dtype=np.float32)
-    return np.concatenate(all_wins)
+    # Project onto the per-window gravity direction — the exact transform
+    # data_merge.py applies to training data. 6 raw device-frame channels ->
+    # 4 orientation-invariant ones, so the Prediction no longer depends on how
+    # the phone was held.
+    return gravity_project(np.concatenate(all_wins))
